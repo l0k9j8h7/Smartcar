@@ -1,0 +1,29 @@
+# ---- AURIX / TASKING build outputs ----
+Debug/
+Release/
+*.elf
+*.hex
+*.map
+*.a
+*.o
+*.obj
+*.d
+*.lst
+*.src
+*.out
+*.abs
+*.tcf
+
+# ---- temp / backup ----
+*.tmp
+*.bak
+*.orig
+
+# ---- Eclipse / IDE ----
+.metadata/
+*.log
+
+# ---- OS junk ----
+Thumbs.db
+desktop.ini
+.DS_Store
