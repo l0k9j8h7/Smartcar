@@ -56,7 +56,8 @@ typedef struct
 #pragma section all "cpu0_dsram"
 #include"control.h"
 #define START_TIME 300000000//0.3s
-#define MAX_PID 400
+int16 P,I,D,err,last_err;
+int16 pid();
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU0的RAM中
 
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
@@ -74,8 +75,9 @@ int core0_main(void)
     // 此处编写用户代码 例如外设初始化代码等
     zf_log(mt9v03x_init(), "mt9v03x init error");
     encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P00_7, TIM2_ENCODER_CH2_P00_8);
-    pwm_init(ATOM0_CH4_P02_4, 17000, 0);// 引脚在 zf_device/pwm 里按通道映射
-    gpio_init(P33_9, GPO, 0, GPO_PUSH_PULL);
+    pwm_init(ATOM0_CH4_P02_4, 17000, 0);// 引脚在 zf_device/pwm 里按通道映射，电机
+    pwm_init(ATOM0_CH1_P33_9, 50, 750);//舵机
+    gpio_init(P33_1, GPO, 0, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(
         &camera_obj,
@@ -101,11 +103,23 @@ int core0_main(void)
         uint32 ticks=system_getval()-start_ticks;//总tick
         if(ticks>START_TIME)if_go=1;
         if(if_go)ticks=START_TIME+1;
-        control(ticks);
+        //err需要计算
+        int16 delta=pid();
+        control(ticks,delta);
 
         // 此处编写需要循环执行的代码
     }
 }
-
+int16 pid()
+{
+  int16 output;
+  float kp = 45, ki = 0, kd = 0;
+  P = err;
+  I += err;
+  D = err - last_err;
+  output = kp * P + ki * I + kd * D;
+  last_err = err;
+  return output;
+}
 #pragma section all restore
 // **************************** 代码区域 ****************************
