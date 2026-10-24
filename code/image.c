@@ -3,34 +3,40 @@
 #include "zf_common_headfile.h"//头文件禁止引用头文件防止内存超限
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-int cmp(const void *a, const void *b){
-return *(int *)a - *(int *)b;
+uint8 cmp(const void *a, const void *b){
+return *(uint8 *)a - *(uint8 *)b;
 }
-
+//分成6*4个小方块
 uint8 s1[9]={-1,0,1,-1,0,1,-1,0,1};
 uint8 s2[9]={-1,-1,-1,0,0,0,1,1,1};
 void double_value(uint8_t image[][MT9V03X_W]){//二值化
-    //平均数备用
+
+
     uint64_t huidu[259]={0};//冗余设计
     uint32 scale=MT9V03X_H*MT9V03X_W;
     uint8 minn=255,maxn=0;
     uint32_t avr=0;//0-6517800
-    //uint8 tong[255]={0},zhi[9]={0};
     for(int i=1;i<MT9V03X_H-1;i++){
         for(int j=1;j<MT9V03X_W-1;j++){
-            //uint8 s1[9]={0,1,2,3,4,5,6,7,8};
-            uint8 tmp[9]={0};
-            //uint8 max_time;//最大项
-            for(int i=0;i<9;i++){
-                tmp[i]=image[s1[i]][s2[i]];
-            }
-            qsort(tmp,9,sizeof(tmp[0]),cmp);
-            image[i][j]=tmp[4];
-        }//去除胡椒噪声
+             uint8 x=image[i][j];
+             uint32 sum=0;
+             int isolated=8;
+             for(int k=0;k<9;k++){
+                  if(k==4) continue;                          // 跳过中心
+                  uint8 v=image[i+s1[k]][j+s2[k]];
+                  int d=v-x; if(d<0) d=-d;
+                  if(d<=32){ isolated--;  break;}         // 有个邻居同色
+                  sum+=v;
 
+
+            }if(isolated>7){                                    // 7 邻居异 → 判孤立
+                 image[i][j]=(uint8)(sum>>3);                 // 填 8 邻居均值
+            }
+        }
     }
 
-    for(int i=0;i<MT9V03X_H;i++){
+
+    for(int i=0+47;i<MT9V03X_H-47;i++){
         for(int j=0;j<MT9V03X_W;j++){
             avr+=image[i][j];
             uint8 now_dot=image[i][j];
@@ -40,10 +46,10 @@ void double_value(uint8_t image[][MT9V03X_W]){//二值化
         }
     }
     avr/=scale;
-    uint8 best_value=-1;
+    int16 best_value=-1;
     float fangcha=0;
     //大津法
-    for(uint8 t=minn;t<maxn;t++){
+    for(uint8 t=minn+1;t<maxn;t++){//防止除0
         uint64_t w0=0,w1=0;
         float u0=0,u1=0;
         for(int i=minn;i<=t;i++){
