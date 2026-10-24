@@ -91,21 +91,17 @@ void double_value (uint8_t image[][MT9V03X_W])
     }
     fa_zhi = da_jin_fa(minn, maxn, huidu);
     int32 quan_jv_an_bu = 0;
-    for (int i = 1; i < MT9V03X_H - 1; i++)
     {
-        for (int j = 1; j < MT9V03X_W - 1; j++)
+        int16 tmp = 0;
+        for (int t = minn; t < maxn; t++)
         {
-            int16 tmp = 0;
-            for (int t = minn; t < maxn; t++)
+            tmp += huidu[t];
+            if (tmp > 1200 || t > (maxn - minn) / 5 + minn)
             {
-                tmp += huidu[t];
-                if (tmp > 1200 || t > (maxn - minn) / 5 + minn)
-                {
-                    quan_jv_an_bu = t;
-                    break;
-                }
-
+                quan_jv_an_bu = t;
+                break;
             }
+
         }
     }
     for (int i = 0; i < 3; i++)
