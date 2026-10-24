@@ -55,6 +55,7 @@ typedef struct
 #include "zf_common_headfile.h"
 #pragma section all "cpu0_dsram"
 #include"control.h"
+#include"image.h"
 #define START_TIME 300000000//0.3s
 int16 P,I,D,err,last_err;
 int16 pid();
@@ -65,7 +66,7 @@ int16 pid();
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
-uint8 image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
+uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
 // **************************** 代码区域 ****************************
 int core0_main(void)
 {
@@ -92,7 +93,7 @@ int core0_main(void)
     cpu_wait_event_ready();         // 等待所有核心初始化完毕
     uint32 start_ticks = system_getval();       // ← 发车那一刻打时间戳
     uint8 if_go=0;//是否发车
-    while (TRUE)
+    while (TRUE)//需要添加帧同步信号防止撕裂
     {
         memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);
         seekfree_assistant_camera_send(&camera_obj);//电脑看会掉帧
@@ -104,8 +105,8 @@ int core0_main(void)
         if(ticks>START_TIME)if_go=1;
         if(if_go)ticks=START_TIME+1;
         //err需要计算
-        int16 delta=pid();
-        control(ticks,delta);
+        double_value(image_copy);
+        control(ticks,pid());
 
         // 此处编写需要循环执行的代码
     }
