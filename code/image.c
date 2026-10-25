@@ -89,7 +89,7 @@ void double_value (uint8_t image[][MT9V03X_W])
             }
         }
     }
-    fa_zhi = da_jin_fa(minn, maxn, huidu);
+
     int32 quan_jv_an_bu = 0;
     {
         int16 tmp = 0;
@@ -143,8 +143,13 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
+    fa_zhi = da_jin_fa(minn, maxn, huidu);
+    for (int i = 0; i < MT9V03X_H ; i++)
+        {
+            for (int j = 0; j < MT9V03X_W ; j++)
+            {
+               image[i][j]=image[i][j]>fa_zhi?255:0;
+            }
+        }
 
-    //todo:
-    //处理成0和1（或0和255的值）
-    //进阶大津法（分块）
 }
