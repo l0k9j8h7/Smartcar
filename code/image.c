@@ -10,12 +10,17 @@ uint8 cmp (const void *a, const void *b)
 //分成6*4个小方块
 int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
+uint8 last_image_exist = 0;
+float now_zhi_xin_du=0;
+float zhi_xin_du = 0.6;
 uint8 to_uint8 (int64 tmp)
 {
     return max(min(tmp,255), 0);
 }
+int64 consist_fail = 0;
 
-int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha)
+int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {
     int16 best_value = -1;
     float fangcha = 0;
@@ -42,8 +47,9 @@ int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha)
             fangcha = ((uint64) (w0 * w1)) * (u0 - u1) * (u0 - u1);
             best_value = t;
         }
-    }
-    return fangcha > zong_fang_cha * 0.6 ? best_value : -1; //<0.6不采纳
+
+    }now_zhi_xin_du=fangcha / zong_fang_cha;
+    return fangcha > zong_fang_cha * zhi_xin_du ? best_value : -1; //<0.6不采纳，该方差不要除以scale
 }
 
 void double_value (uint8_t image[][MT9V03X_W])
@@ -153,16 +159,20 @@ void double_value (uint8_t image[][MT9V03X_W])
             {
                 for (int k2 = 0; k2 < 47; k2++)
                 {
-                    int now_dot = image[i * 40 + k1][j * 47 + k2];
-                    huidu[now_dot]--;
+                    uint8 *now_dot = &image[i * 40 + k1][j * 47 + k2];
+                    huidu[*now_dot]--;
                     int32 tmp = quan_jv_an_bu - an_bu;
-                    image[i * 40 + k1][j * 47 + k2] = to_uint8(tmp + now_dot);                 //地址
-                    huidu[now_dot]++;
+                    if(tmp>=80)tmp=80;
+                    if(tmp<=-80)tmp=-80;
+                    *now_dot = to_uint8(tmp + *now_dot);                 //地址
+                    huidu[*now_dot]++;
                 }
             }
 
         }
     }
+
+
     minn = 255, maxn = 0;                 //重新统计min,max
     for (int i = 1; i < MT9V03X_H - 1; i++)
     {
@@ -195,9 +205,9 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
-    float fangcha = sum / scale;                 //计算总方差
-    fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha);
-    if (fa_zhi != -1)
+    float fangcha = sum*scale;                  //计算总方差,注意不要除以scale，能加快运行速度
+    fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha,zhi_xin_du);
+    if (fa_zhi >= 0)
     {
         for (int i = 0; i < MT9V03X_H; i++)
         {
@@ -208,9 +218,31 @@ void double_value (uint8_t image[][MT9V03X_W])
 
             }
         }
+        memcpy(last_image_copy, image, MT9V03X_IMAGE_SIZE); // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
+        last_image_exist = 1;
+        consist_fail = 0;
+        //if(zhi_xin_du<=0.85)zhi_xin_du+=0.01;
+
     }
     else
     {
-        //取上次缓冲
+        //if(zhi_xin_du>=0.5)zhi_xin_du-=0.01*consist_fail;
+        consist_fail++;
+        if (last_image_exist == 1 && consist_fail <= 5)
+        {
+            memcpy(image, last_image_copy, MT9V03X_IMAGE_SIZE);
+        }
+        else
+        {
+            for (int i = 0; i < MT9V03X_H; i++)
+                    {
+                        for (int j = 0; j < MT9V03X_W; j++)
+                        {
+
+                            image[i][j] = image[i][j] >(maxn+minn)/2? 255 : 0;
+
+                        }
+                    }
+        }
     }
 }

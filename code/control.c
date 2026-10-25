@@ -3,7 +3,7 @@
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-#define START_TIME 300000000//0.3s
+#define START_TIME 30000000//0.3s
 #define MAX_DELTA 200
 
 //#define START_SPEED_ADD 1
