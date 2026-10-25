@@ -98,7 +98,7 @@ int core0_main (void)
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
-            memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);   // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
+            memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);   // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
 
             uint32 ticks = system_getval() - start_ticks;   //计算t
@@ -108,7 +108,9 @@ int core0_main (void)
                 ticks = START_TIME + 1;
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
+            xiao_qu_yu_shan_chu(image_copy);
             control(ticks, pid());
+
         }
     }
 }

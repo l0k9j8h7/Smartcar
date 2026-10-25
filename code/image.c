@@ -359,3 +359,4 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
         }
 
     }
+}
