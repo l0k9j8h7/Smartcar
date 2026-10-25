@@ -3,17 +3,56 @@
 #include "zf_common_headfile.h"//头文件禁止引用头文件防止内存超限
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-uint8 cmp (const void *a, const void *b)
-{
-    return *(uint8*) a - *(uint8*) b;
-}
 //分成6*4个小方块
 int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
 uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
 uint8 last_image_exist = 0;
-float now_zhi_xin_du=0;
+float now_zhi_xin_du = 0;
 float zhi_xin_du = 0.6;
+struct dui
+{
+    uint64 head;
+    uint64 tail;
+    uint16 queue[1024]; //边界
+    uint16 len;
+} q = {0}; //定义1024长度队列
+void push (uint16 num)
+{
+    if (q.len >= 1024)
+        return;
+    q.queue[q.tail] = num;
+    q.tail++;
+    q.len++;
+    if (q.tail == 1024)
+        q.tail = 0;
+
+}
+void pop ()
+{
+    q.queue[q.head] = 0;
+    q.head++;
+    q.len--;
+    if (q.head == 1024)
+        q.head = 0;
+}
+void clear ()
+{
+    q.head = 0;
+    q.tail = 0;
+    q.len = 0;
+}
+int8 empty ()
+{
+    if (q.len == 0)
+        return 1;
+    else
+        return 0;
+}
+uint16 top ()
+{
+    return q.queue[q.head];
+}
 uint8 to_uint8 (int64 tmp)
 {
     return max(min(tmp,255), 0);
@@ -48,7 +87,8 @@ int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float 
             best_value = t;
         }
 
-    }now_zhi_xin_du=fangcha / zong_fang_cha;
+    }
+    now_zhi_xin_du = fangcha / zong_fang_cha;
     return fangcha > zong_fang_cha * zhi_xin_du ? best_value : -1; //<0.6不采纳，该方差不要除以scale
 }
 
@@ -162,8 +202,10 @@ void double_value (uint8_t image[][MT9V03X_W])
                     uint8 *now_dot = &image[i * 40 + k1][j * 47 + k2];
                     huidu[*now_dot]--;
                     int32 tmp = quan_jv_an_bu - an_bu;
-                    if(tmp>=80)tmp=80;
-                    if(tmp<=-80)tmp=-80;
+                    if (tmp >= 80)
+                        tmp = 80;
+                    if (tmp <= -80)
+                        tmp = -80;
                     *now_dot = to_uint8(tmp + *now_dot);                 //地址
                     huidu[*now_dot]++;
                 }
@@ -171,7 +213,6 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
-
 
     minn = 255, maxn = 0;                 //重新统计min,max
     for (int i = 1; i < MT9V03X_H - 1; i++)
@@ -205,8 +246,8 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
-    float fangcha = sum*scale;                  //计算总方差,注意不要除以scale，能加快运行速度
-    fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha,zhi_xin_du);
+    float fangcha = sum * scale;                  //计算总方差,注意不要除以scale，能加快运行速度
+    fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha, zhi_xin_du);
     if (fa_zhi >= 0)
     {
         for (int i = 0; i < MT9V03X_H; i++)
@@ -221,12 +262,10 @@ void double_value (uint8_t image[][MT9V03X_W])
         memcpy(last_image_copy, image, MT9V03X_IMAGE_SIZE); // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
         last_image_exist = 1;
         consist_fail = 0;
-        //if(zhi_xin_du<=0.85)zhi_xin_du+=0.01;
 
     }
     else
     {
-        //if(zhi_xin_du>=0.5)zhi_xin_du-=0.01*consist_fail;
         consist_fail++;
         if (last_image_exist == 1 && consist_fail <= 5)
         {
@@ -235,14 +274,88 @@ void double_value (uint8_t image[][MT9V03X_W])
         else
         {
             for (int i = 0; i < MT9V03X_H; i++)
-                    {
-                        for (int j = 0; j < MT9V03X_W; j++)
-                        {
+            {
+                for (int j = 0; j < MT9V03X_W; j++)
+                {
 
-                            image[i][j] = image[i][j] >(maxn+minn)/2? 255 : 0;
+                    image[i][j] = image[i][j] > (maxn + minn) / 2 ? 255 : 0;
 
-                        }
-                    }
+                }
+            }
         }
     }
 }
+void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
+{
+    static uint8 color[MT9V03X_H][MT9V03X_W] = {0};
+    memset(color, 0, sizeof(color));
+    //uint32 sz[8000]={0};
+    int colors = 0;
+    clear();
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        for (int j = 0; j < MT9V03X_W; j++)
+        {
+            if (!color[i][j] && image[i][j]) //只处理白线
+            {
+                int size = 0;
+                push(i * MT9V03X_W + j);
+                color[i][j] = ++colors;
+
+                      /* 起头立刻清 */
+                if (colors >= 255)
+                    colors = 1;
+                //size++;
+                while (!empty())
+                {
+                    int32 tmp = top(); //应该是front，懒得改了
+                    pop();
+                    size++;
+                    for (int k = 0; k < 9; k++)
+                    {
+
+                        int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
+                        if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
+                        {
+                            continue;
+                        }
+                        if (!color[hang][lie] && image[hang][lie])
+                        {
+                            color[hang][lie] = colors;
+                            push(hang * MT9V03X_W + lie);
+                        }
+                    }
+                }
+                if (size < 60)
+                {
+                    //删除
+                    push(i * MT9V03X_W + j);
+                    image[i][j] = 0;
+                    while (!empty())
+                    {
+                        int32 tmp = top();
+                        pop();
+
+                        for (int k = 0; k < 9; k++)
+                        {
+
+                            int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
+
+                            if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
+                            {
+                                continue;
+                            }
+                            if (color[hang][lie]==colors)
+                            {
+                                push(hang * MT9V03X_W + lie);
+                                color[hang][lie] = 0;
+                                image[hang][lie] = 0; //清0
+                            }
+                        }
+                    }
+
+                }
+            }
+        }
+
+    }
