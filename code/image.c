@@ -29,9 +29,8 @@ static int64 gcd64 (int64 x, int64 y)
 }
 typedef struct
 {
-    int64 shuzi;
-    int64 bizhi;
-} ding_bi_shu;
+    int64 n;
+} ding_bi_shu_256;
 struct dui
 {
     uint64 head;
@@ -76,40 +75,46 @@ uint16 top ()
 {
     return q.queue[q.head];
 }
-#define shua (*a).shuzi
-#define shub (*b).shuzi
-#define bia (*a).bizhi
-#define bib (*b).bizhi
-static inline void chu_fa ( ding_bi_shu *a, ding_bi_shu *b) //x=chu_fa(&x,&y)
-{ //a/b
+ding_bi_shu_256 cha_zhi[4];
 
-    shua *= bib;
-    bia *= shub;
-    gcd64(shua,bia);
-}
-static inline void cheng_fa ( ding_bi_shu *a,  ding_bi_shu *b)
+void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 {
-    bia *= bib;
-    shua *= shub;
-    gcd64(shua,shub);
-}
-static inline void jia_fa ( ding_bi_shu *a,  ding_bi_shu *b)
-{ //不能自己加自己
+    if (i <= 20)
+        i = 20;
+    else if (i >= 99)
+        i = 99;
+    if (j <= 24)
+        j = 24;
+    else if (j >= 164)
+        j = 164;
 
-    shua *= bib;
-    shua += bia * shub;
-    bia *= bib;
+    for (int k = 0; k < 4; k++)
+        cha_zhi[k].n = 0;
+    int16 row_up = (i * 2 - 39) / 80;
+    int16 row_down = row_up + 1;
+    int16 col_left = (j * 2 - 47) / 94;
+    int16 col_right = col_left + 1;
+    //if(i>=20&&i<=99)//19.5-99.5
+    // {
+
+    //if(j>=24&&j<=164)//23.5-164.5
+    //{ //188
+    //if(j%2==0)continue;
+
+    ding_bi_shu_256 wx, wy;
+    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40;
+    wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;//超级复杂的数学公式
+    cha_zhi[0].n = (256 - wy.n) * (256 - wx.n);            //放大65536倍
+    cha_zhi[1].n = wy.n * (256 - wx.n);
+    cha_zhi[2].n = (256 - wy.n) * (wx.n);
+    cha_zhi[3].n = wx.n * wy.n;
+
+    //}
+
+    //}
+    //复制一次最外围数据
 }
-static inline void jian_fa( ding_bi_shu *a,  ding_bi_shu *b){
-    shua*=bib;
-    shua-=bia*shub;
-    bia*=bib;
-}
-#undef shua
-#undef shub
-#undef bia
-#undef bib
-uint8 to_uint8 (int64 tmp)
+static inline uint8 to_uint8 (int64 tmp)
 {
     return max(min(tmp,255), 0);
 }
