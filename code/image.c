@@ -3,13 +3,35 @@
 #include "zf_common_headfile.h"//头文件禁止引用头文件防止内存超限
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+#define da_yu(a,b) ((a) > (b) ? 1 : 0)
+#define xiao_yu(a,b) ((a) < (b) ? 1 : 0)
 //分成6*4个小方块
 int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
 uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
+
 uint8 last_image_exist = 0;
 float now_zhi_xin_du = 0;
 float zhi_xin_du = 0.6;
+static int64 gcd64 (int64 x, int64 y)
+{
+    if (x < 0)
+        x = -x;
+    if (y < 0)
+        y = -y;
+    while (y != 0)
+    {
+        int64 t = x % y;
+        x = y;
+        y = t;
+    }
+    return x;   // x 就是 gcd，gcd(0,0) 返回 0
+}
+typedef struct
+{
+    int64 shuzi;
+    int64 bizhi;
+} ding_bi_shu;
 struct dui
 {
     uint64 head;
@@ -17,6 +39,7 @@ struct dui
     uint16 queue[1024]; //边界
     uint16 len;
 } q = {0}; //定义1024长度队列
+
 void push (uint16 num)
 {
     if (q.len >= 1024)
@@ -53,6 +76,39 @@ uint16 top ()
 {
     return q.queue[q.head];
 }
+#define shua (*a).shuzi
+#define shub (*b).shuzi
+#define bia (*a).bizhi
+#define bib (*b).bizhi
+static inline void chu_fa ( ding_bi_shu *a, ding_bi_shu *b) //x=chu_fa(&x,&y)
+{ //a/b
+
+    shua *= bib;
+    bia *= shub;
+    gcd64(shua,bia);
+}
+static inline void cheng_fa ( ding_bi_shu *a,  ding_bi_shu *b)
+{
+    bia *= bib;
+    shua *= shub;
+    gcd64(shua,shub);
+}
+static inline void jia_fa ( ding_bi_shu *a,  ding_bi_shu *b)
+{ //不能自己加自己
+
+    shua *= bib;
+    shua += bia * shub;
+    bia *= bib;
+}
+static inline void jian_fa( ding_bi_shu *a,  ding_bi_shu *b){
+    shua*=bib;
+    shua-=bia*shub;
+    bia*=bib;
+}
+#undef shua
+#undef shub
+#undef bia
+#undef bib
 uint8 to_uint8 (int64 tmp)
 {
     return max(min(tmp,255), 0);
@@ -302,7 +358,7 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                 push(i * MT9V03X_W + j);
                 color[i][j] = ++colors;
 
-                      /* 起头立刻清 */
+                /* 起头立刻清 */
                 if (colors >= 255)
                     colors = 1;
                 //size++;
@@ -345,7 +401,7 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                             {
                                 continue;
                             }
-                            if (color[hang][lie]==colors)
+                            if (color[hang][lie] == colors)
                             {
                                 push(hang * MT9V03X_W + lie);
                                 color[hang][lie] = 0;
