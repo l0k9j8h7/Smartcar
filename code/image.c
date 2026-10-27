@@ -13,20 +13,7 @@ uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
 uint8 last_image_exist = 0;
 float now_zhi_xin_du = 0;
 float zhi_xin_du = 0.6;
-static int64 gcd64 (int64 x, int64 y)
-{
-    if (x < 0)
-        x = -x;
-    if (y < 0)
-        y = -y;
-    while (y != 0)
-    {
-        int64 t = x % y;
-        x = y;
-        y = t;
-    }
-    return x;   // x 就是 gcd，gcd(0,0) 返回 0
-}
+
 typedef struct
 {
     int64 n;
@@ -52,11 +39,14 @@ void push (uint16 num)
 }
 void pop ()
 {
+    if (q.len == 0)
+        return;
     q.queue[q.head] = 0;
     q.head++;
     q.len--;
     if (q.head == 1024)
         q.head = 0;
+
 }
 void clear ()
 {
@@ -103,7 +93,7 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 
     ding_bi_shu_256 wx, wy;
     wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40;
-    wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;//超级复杂的数学公式
+    wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;    //超级复杂的数学公式
     cha_zhi[0].n = (256 - wy.n) * (256 - wx.n);            //放大65536倍
     cha_zhi[1].n = wy.n * (256 - wx.n);
     cha_zhi[2].n = (256 - wy.n) * (wx.n);
@@ -119,7 +109,7 @@ static inline uint8 to_uint8 (int64 tmp)
     return max(min(tmp,255), 0);
 }
 int64 consist_fail = 0;
-
+int16 fen_kuai_bu_chang[3][4] = {0};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {
     int16 best_value = -1;
@@ -245,13 +235,14 @@ void double_value (uint8_t image[][MT9V03X_W])
                 }
             }
             int16 tmp = 0;
+            fen_kuai_bu_chang[i][j]=minn;//取最小值防止不进入循环（minn=maxn)
             for (int16 t = minn; t < maxn; t++)
             {
                 tmp += kuai_nei_huidu[t];
                 if (tmp > 100 || t >= (maxn - minn) / 5 + minn)
                 {
 
-                    an_bu = t;
+                    fen_kuai_bu_chang[i][j] = t;
                     break;
                 }
 
@@ -260,18 +251,43 @@ void double_value (uint8_t image[][MT9V03X_W])
             {
                 for (int k2 = 0; k2 < 47; k2++)
                 {
-                    uint8 *now_dot = &image[i * 40 + k1][j * 47 + k2];
-                    huidu[*now_dot]--;
-                    int32 tmp = quan_jv_an_bu - an_bu;
-                    if (tmp >= 80)
-                        tmp = 80;
-                    if (tmp <= -80)
-                        tmp = -80;
-                    *now_dot = to_uint8(tmp + *now_dot);                 //地址
-                    huidu[*now_dot]++;
+
                 }
             }
 
+        }
+    }
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        for (int j = 0; j < MT9V03X_W; j++)
+        {
+            int k = i, l = j;
+            uint8 *now_dot = &image[i][j];
+            huidu[*now_dot]--;
+            if (k <= 20)
+                k = 20;
+            else if (k >= 99)
+                k = 99;
+            if (l <= 24)
+                l = 24;
+            else if (l >= 164)
+                l = 164;
+
+            int16 row_up = ((k) * 2 - 39) / 80;
+            int16 row_down = row_up + 1;
+            int16 col_left = ((l) * 2 - 47) / 94;
+            int16 col_right = col_left + 1;
+            cha_zhi_update(k, l);
+
+            int64_t bu_chang =
+                    quan_jv_an_bu
+                            - ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
+                                    + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
+                                    + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
+                                    + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16)/*计算时用了wx,wy 256定比数，需要除以65536*/;
+            bu_chang = max(-40, min(40,bu_chang));
+            *now_dot = to_uint8(bu_chang + *now_dot);                 //地址
+            huidu[*now_dot]++;
         }
     }
 
@@ -348,29 +364,25 @@ void double_value (uint8_t image[][MT9V03X_W])
 }
 void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
 {
-    static uint8 color[MT9V03X_H][MT9V03X_W] = {0};
-    memset(color, 0, sizeof(color));
+    //static uint8 color[MT9V03X_H][MT9V03X_W] = {0};
+    //memset(color, 0, sizeof(color));
     //uint32 sz[8000]={0};
-    int colors = 0;
+
     clear();
     for (int i = 0; i < MT9V03X_H; i++)
     {
         for (int j = 0; j < MT9V03X_W; j++)
         {
-            if (!color[i][j] && image[i][j]) //只处理白线
+            if (image[i][j] == 255) //只处理白线
             {
                 int size = 0;
                 push(i * MT9V03X_W + j);
-                color[i][j] = ++colors;
-
-                /* 起头立刻清 */
-                if (colors >= 255)
-                    colors = 1;
-                //size++;
+                image[i][j] = 1;
                 while (!empty())
                 {
                     int32 tmp = top(); //应该是front，懒得改了
                     pop();
+
                     size++;
                     for (int k = 0; k < 9; k++)
                     {
@@ -380,9 +392,9 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                         {
                             continue;
                         }
-                        if (!color[hang][lie] && image[hang][lie])
+                        if (image[hang][lie] == 255)
                         {
-                            color[hang][lie] = colors;
+                            image[hang][lie] = 1;
                             push(hang * MT9V03X_W + lie);
                         }
                     }
@@ -406,18 +418,46 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                             {
                                 continue;
                             }
-                            if (color[hang][lie] == colors)
+                            if (image[hang][lie] == 1)
                             {
                                 push(hang * MT9V03X_W + lie);
-                                color[hang][lie] = 0;
                                 image[hang][lie] = 0; //清0
                             }
+
                         }
                     }
 
+                }
+                else
+                {
+                    image[i][j] = 255;
+                    push(i * MT9V03X_W + j);
+                    while (!empty())
+                    {
+                        int32 tmp = top();
+                        pop();
+
+                        for (int k = 0; k < 9; k++)
+                        {
+
+                            int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
+
+                            if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
+                            {
+                                continue;
+                            }
+                            if (image[hang][lie] == 1)
+                            {
+                                push(hang * MT9V03X_W + lie);
+                                image[hang][lie] = 255; //清0
+                            }
+
+                        }
+                    }
                 }
             }
         }
 
     }
+
 }
