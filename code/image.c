@@ -76,40 +76,27 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
     if (j <= 24)
         j = 24;
     else if (j >= 164)
-        j = 164;
+        j = 164;//使用最外围的点求值
 
     for (int k = 0; k < 4; k++)
         cha_zhi[k].n = 0;
     int16 row_up = (i * 2 - 39) / 80;
-    int16 row_down = row_up + 1;
     int16 col_left = (j * 2 - 47) / 94;
-    int16 col_right = col_left + 1;
-    //if(i>=20&&i<=99)//19.5-99.5
-    // {
-
-    //if(j>=24&&j<=164)//23.5-164.5
-    //{ //188
-    //if(j%2==0)continue;
-
     ding_bi_shu_256 wx, wy;
-    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40;
+    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40;//越大反而越小
     wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;    //超级复杂的数学公式
     cha_zhi[0].n = (256 - wy.n) * (256 - wx.n);            //放大65536倍
     cha_zhi[1].n = wy.n * (256 - wx.n);
     cha_zhi[2].n = (256 - wy.n) * (wx.n);
     cha_zhi[3].n = wx.n * wy.n;
 
-    //}
-
-    //}
-    //复制一次最外围数据
 }
 static inline uint8 to_uint8 (int64 tmp)
 {
-    return max(min(tmp,255), 0);
+    return (uint8)(max(min(tmp,255), 0));
 }
 int64 consist_fail = 0;
-int16 fen_kuai_bu_chang[3][4] = {0};    //65536 max
+int16 fen_kuai_bu_chang[3][4] ={{0}};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {
     int16 best_value = -1;
@@ -149,16 +136,8 @@ void double_value (uint8_t image[][MT9V03X_W])
     uint16 huidu[259] = {0}; //宽/高/像素种类
 
     uint32 scale = MT9V03X_H * MT9V03X_W;
-    uint8 minn = 255, maxn = 0/*, jv_bu_min[3][4] = {0}, jv_bu_max[3][4] = {0}*/;
+    uint8 minn = 255, maxn = 0;
     int32 fa_zhi = 0;
-    /*
-     for (int i = 0; i < 3; i++)
-     {
-     for (int j = 0; j < 4; j++)
-     {
-     jv_bu_min[i][j] = 255;
-     }
-     }*/
     for (int i = 0; i < MT9V03X_H; i++)
     {
         for (int j = 0; j < MT9V03X_W; j++)
@@ -223,7 +202,6 @@ void double_value (uint8_t image[][MT9V03X_W])
         {
             int16 kuai_nei_huidu[256] = {0};                 //块内灰度
             uint8 minn = 255, maxn = 0;
-            int16 an_bu = 0;
             for (int k1 = 0; k1 < 40; k1++)
             {
                 for (int k2 = 0; k2 < 47; k2++)
@@ -246,13 +224,6 @@ void double_value (uint8_t image[][MT9V03X_W])
                     break;
                 }
 
-            }
-            for (int k1 = 0; k1 < 40; k1++)
-            {
-                for (int k2 = 0; k2 < 47; k2++)
-                {
-
-                }
             }
 
         }
@@ -318,12 +289,12 @@ void double_value (uint8_t image[][MT9V03X_W])
     {
         for (int j = 0; j < MT9V03X_W; j++)
         {
-            int32 tmp = image[i][j] - avr;
+            int64 tmp = image[i][j] - avr;
             sum += tmp * tmp;
 
         }
     }
-    float fangcha = sum * scale;                  //计算总方差,注意不要除以scale，能加快运行速度
+    float fangcha = (float)(sum * scale);                  //计算总方差,注意不要除以scale，能加快运行速度
     fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha, zhi_xin_du);
     if (fa_zhi >= 0)
     {
@@ -362,12 +333,7 @@ void double_value (uint8_t image[][MT9V03X_W])
         }
     }
 }
-void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
-{
-    //static uint8 color[MT9V03X_H][MT9V03X_W] = {0};
-    //memset(color, 0, sizeof(color));
-    //uint32 sz[8000]={0};
-
+void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W]){
     clear();
     for (int i = 0; i < MT9V03X_H; i++)
     {
