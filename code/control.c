@@ -5,8 +5,6 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define START_TIME 30000000//0.3s
 #define MAX_DELTA 200
-int16 P, I, D, err, last_err;          /* 无 pragma → 默认段 → CPU1 DSPR */
-void ctrl_set_err (int16 e) { err = e; }
 
 //#define START_SPEED_ADD 1
 #define MAX_SPEED 1000//0-10000限幅
@@ -28,19 +26,4 @@ void control(uint32 tick,uint16 delta){
 // 调节顺序先kp后ki再kd，这里自己试一下，这里我只使用纯P调节
 // I调节是有作用的，但是不要太大
 //(由于是误差是离散的，不连续的，这里的D，只在数值突变的一刻，D才起调节作用，具体有没有用，理解代码，自己试一下)
-
-int16 pid (void)
-{
-    int16 output;
-    float kp = 45;
-    float ki = 0;
-    float kd = 0;
-
-    P = err;
-    I += err;
-    D = err - last_err;
-    output = (int16)(kp * P + ki * I + kd * D);
-    last_err = err;
-    return output;
-}
 
