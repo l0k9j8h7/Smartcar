@@ -1,1 +1,1 @@
-void control(uint32 tick,uint16 delta);
+void control(uint32 tick,int16 delta);

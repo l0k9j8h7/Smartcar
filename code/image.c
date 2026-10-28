@@ -412,14 +412,14 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
 }
 #define LINEWIDTH 7
 #define YOUXIAOXIANKUAN 5
-int64 find_line (uint8_t image[][MT9V03X_W])
+int32 find_line (uint8_t image[][MT9V03X_W])
 { //返回方向值(delta1)
     int sum1 = 0, sum2 = 0, max1 = 0, max2 = 0;
     int lline = -1, rline = -1, lmax = -1, rmax = -1;
     for (int i = 0; i < LINEWIDTH; i++)
-    { //滑动数组来求线,先求左边线
-        int j = MT9V03X_W - i - 1; //...-1,
-        sum1 += image[MT9V03X_H - 1][i];
+    { //滑动数组来求线,先求右边线
+        int j = MT9V03X_W - i - 1;
+        sum1 += image[MT9V03X_H - 1][i];//最下端寻找
         sum2 += image[MT9V03X_H - 1][j];
     }
     for (int i = LINEWIDTH; i < MT9V03X_W; i++)
@@ -452,7 +452,13 @@ int64 find_line (uint8_t image[][MT9V03X_W])
     {
         return (max2!=0&&max1!=0)?(lmax<<8)+rmax:(-1);//<0
     }
-    return (lline<<8)+rline;
+    return (lline<<8)+rline;//返回左右的值
+
+}
+#define MAX_XIANGSHANG 50
+int32 qing_xie_du(int32 x){
+    //x为参数
+    int32 lline=x>>8,rline=x-lline,lh=MT9V03X_H - 1,rh=MT9V03X_H - 1;
 
 }
 #define MAX_CAPACITY 1

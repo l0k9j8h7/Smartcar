@@ -10,7 +10,7 @@
 #define MAX_SPEED 1000//0-10000限幅
 static int16 delta=0;
 
-void control(uint32 tick,uint16 delta){
+void control(uint32 tick,int16 delta){
 
     if(tick<START_TIME){
         //占空比逐渐增大
