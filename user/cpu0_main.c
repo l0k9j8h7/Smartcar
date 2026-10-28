@@ -52,16 +52,25 @@
  }seekfree_assistant_camera_struct;
 
  */
+
 #include "zf_common_headfile.h"
 #pragma section all "cpu0_dsram"
 #include"control.h"
 #include"image.h"
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 #define START_TIME 30000000//0.3s
 int16 P, I, D, err, last_err;
 int16 pid ()
 {
     int16 output;
     float kp = 45, ki = 0, kd = 0;
+    P=min(P,80);
+    P=max(P,-80);
+    I=min(I,40);
+    I=max(I,-40);
+    D=min(D,20);
+    D=max(D,-20);
     P = err;
     I += err;
     D = err - last_err;
@@ -119,8 +128,10 @@ int core0_main (void)
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
             xiao_qu_yu_shan_chu(image_copy);
-            control(ticks, pid());
 
+            int64 x=find_line(image_copy);
+            int delta=pid()+min(qing_xie_du(x,image_copy)*50,150);
+            control(ticks, delta);
         }
     }
 }
