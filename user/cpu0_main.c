@@ -58,7 +58,17 @@
 #include"image.h"
 #define START_TIME 30000000//0.3s
 int16 P, I, D, err, last_err;
-int16 pid ();
+int16 pid ()
+{
+    int16 output;
+    float kp = 45, ki = 0, kd = 0;
+    P = err;
+    I += err;
+    D = err - last_err;
+    output = kp * P + ki * I + kd * D;
+    last_err = err;
+    return output;
+}
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU0的RAM中
 
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
@@ -75,7 +85,7 @@ int core0_main (void)
     system_start(); //计时启动
     // 此处编写用户代码 例如外设初始化代码等
     zf_log(mt9v03x_init(), "mt9v03x init error");
-    encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P00_7, TIM2_ENCODER_CH2_P00_8);
+    encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
     pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
     pwm_init(ATOM0_CH1_P33_9, 50, 750);    //舵机
     gpio_init(P33_1, GPO, 0, GPO_PUSH_PULL);
@@ -114,16 +124,6 @@ int core0_main (void)
         }
     }
 }
-int16 pid ()
-{
-    int16 output;
-    float kp = 45, ki = 0, kd = 0;
-    P = err;
-    I += err;
-    D = err - last_err;
-    output = kp * P + ki * I + kd * D;
-    last_err = err;
-    return output;
-}
+
 #pragma section all restore
 // **************************** 代码区域 ****************************

@@ -84,14 +84,14 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
     if (j <= 24)
         j = 24;
     else if (j >= 164)
-        j = 164;//使用最外围的点求值
+        j = 164; //使用最外围的点求值
 
     for (int k = 0; k < 4; k++)
         cha_zhi[k].n = 0;
     int32 row_up = (i * 2 - 39) / 80;
     int32 col_left = (j * 2 - 47) / 94;
     ding_bi_shu_256 wx, wy;
-    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40;//越大反而越小
+    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40; //越大反而越小
     wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;    //超级复杂的数学公式
     cha_zhi[0].n = (256 - wy.n) * (256 - wx.n);            //放大65536倍
     cha_zhi[1].n = (256 - wy.n) * (wx.n);
@@ -101,10 +101,10 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 }
 static inline uint8 to_uint8 (int64 tmp)
 {
-    return (uint8)(max(min(tmp,255), 0));
+    return (uint8) (max(min(tmp,255), 0));
 }
 int64 consist_fail = 0;
-int16 fen_kuai_bu_chang[3][4] ={{0}};    //65536 max
+int16 fen_kuai_bu_chang[3][4] = {{0}};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {
     int16 best_value = -1;
@@ -221,7 +221,7 @@ void double_value (uint8_t image[][MT9V03X_W])
                 }
             }
             int16 tmp = 0;
-            fen_kuai_bu_chang[i][j]=minn;//取最小值防止不进入循环（minn=maxn)
+            fen_kuai_bu_chang[i][j] = minn;                 //取最小值防止不进入循环（minn=maxn)
             for (int16 t = minn; t < maxn; t++)
             {
                 tmp += kuai_nei_huidu[t];
@@ -302,7 +302,7 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
-    float fangcha = (float)(sum * scale);                  //计算总方差,注意不要除以scale，能加快运行速度
+    float fangcha = (float) (sum * scale);                  //计算总方差,注意不要除以scale，能加快运行速度
     fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha, zhi_xin_du);
     if (fa_zhi >= 0)
     {
@@ -341,7 +341,8 @@ void double_value (uint8_t image[][MT9V03X_W])
         }
     }
 }
-void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W]){
+void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
+{
     clear();
     for (int i = 0; i < MT9V03X_H; i++)
     {
@@ -403,10 +404,59 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W]){
 
                 }
 
-
             }
         }
 
     }
+
+}
+#define LINEWIDTH 7
+#define YOUXIAOXIANKUAN 5
+int64 find_line (uint8_t image[][MT9V03X_W])
+{ //返回方向值(delta1)
+    int sum1 = 0, sum2 = 0, max1 = 0, max2 = 0;
+    int lline = -1, rline = -1, lmax = -1, rmax = -1;
+    for (int i = 0; i < LINEWIDTH; i++)
+    { //滑动数组来求线,先求左边线
+        int j = MT9V03X_W - i - 1; //...-1,
+        sum1 += image[MT9V03X_H - 1][i];
+        sum2 += image[MT9V03X_H - 1][j];
+    }
+    for (int i = LINEWIDTH; i < MT9V03X_W; i++)
+    {
+        int j = MT9V03X_W - i - 1;
+        sum1 -= image[MT9V03X_H - 1][i - LINEWIDTH];
+        sum2 -= image[MT9V03X_H - 1][j + LINEWIDTH];
+        sum1 += image[MT9V03X_H - 1][i];
+        sum2 += image[MT9V03X_H - 1][j];
+        if (sum1 >= YOUXIAOXIANKUAN && image[MT9V03X_H - 1][i] != 0)
+        {
+            rline = i;
+        }
+        if (sum1 > max1)
+        {
+            max1 = sum1;
+            rmax = i;
+        }
+        if (sum2 >= YOUXIAOXIANKUAN && image[MT9V03X_H - 1][j] != 0)
+        {
+            lline = j;
+        }
+        if (sum2 > max2)
+        {
+            max2 = sum2;
+            lmax = j;
+        }
+    }
+    if (lline == -1 && rline == -1)
+    {
+        return (max2!=0&&max1!=0)?(lmax<<8)+rmax:(-1);//<0
+    }
+    return (lline<<8)+rline;
+
+}
+#define MAX_CAPACITY 1
+void image_read (uint8_t image[][MT9V03X_W])
+{
 
 }
