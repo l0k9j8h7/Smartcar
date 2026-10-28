@@ -419,7 +419,7 @@ int32 find_line (uint8_t image[][MT9V03X_W])
     for (int i = 0; i < LINEWIDTH; i++)
     { //滑动数组来求线,先求右边线
         int j = MT9V03X_W - i - 1;
-        sum1 += image[MT9V03X_H - 1][i];//最下端寻找
+        sum1 += image[MT9V03X_H - 1][i]; //最下端寻找
         sum2 += image[MT9V03X_H - 1][j];
     }
     for (int i = LINEWIDTH; i < MT9V03X_W; i++)
@@ -450,16 +450,67 @@ int32 find_line (uint8_t image[][MT9V03X_W])
     }
     if (lline == -1 && rline == -1)
     {
-        return (max2!=0&&max1!=0)?(lmax<<8)+rmax:(-1);//<0
+        return (max2 != 0 && max1 != 0) ? (lmax << 8) + rmax : (-1); //<0
     }
-    return (lline<<8)+rline;//返回左右的值
+    return (lline << 8) + rline; //返回左右的值
 
 }
-#define MAX_XIANGSHANG 50
-int32 qing_xie_du(int32 x){
+#define ZUI_DA_GAO_DU 50
+#define YUN_XV_SHI_BAI_CI_SHU 5
+#define MAX_LINE_WIDTH 80
+float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
+{
     //x为参数
-    int32 lline=x>>8,rline=x-lline,lh=MT9V03X_H - 1,rh=MT9V03X_H - 1;
-
+    if(x<0)return -1;//失败回退
+    const int32 yuanzuo = x >> 8, yuanyou = x - (yuanzuo << 8);
+    int32 lline = x >> 8, rline = x - (lline << 8), lh = MT9V03X_H - 1, rh = MT9V03X_H - 1;
+    int8 lfail = 0, rfail = 0;
+    while (rh > MT9V03X_H - 1 - ZUI_DA_GAO_DU /*高度相同*/&& rline != MT9V03X_W - 1/*到达地图边界或向上n格*/&& rline > lline
+            && lline != 0 && lfail <= YUN_XV_SHI_BAI_CI_SHU && rfail <= YUN_XV_SHI_BAI_CI_SHU&&rline-lline<=MAX_LINE_WIDTH)
+    {
+        while ((rline + 1) != MT9V03X_W - 1 && image[rh][rline + 1]&&rline-lline<=MAX_LINE_WIDTH)
+        { //一直向右转
+            rline = rline + 1;
+        }
+        if (image[rh - 1][rline + 1]) //右上
+        {
+            rh--; //从下往上面需要用减
+            rline++;
+        }
+        else if (image[rh - 1][rline])
+        {
+            rh--;
+        }
+        else if (image[rh - 1][rline - 1])
+        {
+            rh--;
+            rline--;
+        }
+        else
+            rfail++, rh--;
+        while ((lline - 1) != 0 && image[lh][lline - 1]&&rline-lline<=MAX_LINE_WIDTH)
+        {
+            lline = lline - 1;
+        }
+        if (image[lh - 1][lline - 1]) //
+        {
+            lh--;
+            lline--;
+        }
+        else if (image[lh - 1][lline])
+        {
+            lh--;
+        }
+        else if (image[lh - 1][lline + 1])
+        {
+            lh--;
+            lline++;
+        }
+        else
+            lfail++, lh--;
+    }
+    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0)return -1;
+    return (((float)(yuanzuo-lline)/(MT9V03X_H - 1-lh))+((float)(yuanyou-rline)/(MT9V03X_H - 1-rh)))/2;
 }
 #define MAX_CAPACITY 1
 void image_read (uint8_t image[][MT9V03X_W])
