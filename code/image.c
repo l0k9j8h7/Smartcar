@@ -402,33 +402,8 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W]){
                     }
 
                 }
-                else
-                {
-                    image[i][j] = 255;
-                    push(i * MT9V03X_W + j);
-                    while (!empty())
-                    {
-                        int32 tmp = top();
-                        pop();
 
-                        for (int k = 0; k < 9; k++)
-                        {
 
-                            int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
-
-                            if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
-                            {
-                                continue;
-                            }
-                            if (image[hang][lie] == 1)
-                            {
-                                push(hang * MT9V03X_W + lie);
-                                image[hang][lie] = 255; //Çå0
-                            }
-
-                        }
-                    }
-                }
             }
         }
 
