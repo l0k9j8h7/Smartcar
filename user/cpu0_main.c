@@ -133,13 +133,15 @@ int core0_main (void)
 
             int32 x = find_line(image_copy);
             float x1 = qing_xie_du(x, image_copy);
-            if (x1 < -100 || x1 > 100 || x >> 8 < 10 || ((x - (((x >> 8) << 8) >> 8))) > 178)
+            int lline = (x >> 8) & 0xFF;                  /* 左边界列 0~187 */
+            int rline = x & 0xFF;                         /* 右边界列 0~187 */
+            if (x < 0 || x1 < -100 || x1 > 100 || lline < 10 || rline > 178)
             {
-                control(ticks, 0,MAX_SPEED/10);   // 或保持上一帧舵机
+                control(ticks, 0,MAX_SPEED/10);   // 丢线时舵机回中并降速
                 continue;
             }
-            err= ((x >> 8 + ((x - ((x >> 8) << 8) >> 8))) - 187) * 50;
-            int delta = pid() + x1 * 1500 ;
+            err = ((lline + rline) - 187) * 15;
+            int delta = pid() + x1 * 600 ;
             if (delta > 150)
                 delta = 150;
             if (delta < -150)
