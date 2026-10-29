@@ -64,7 +64,7 @@ int16 P, I, D, err, last_err;
 int16 pid ()
 {
     int16 output;
-    float kp = 45, ki = 0, kd = 0;
+    float kp = 8, ki = 4, kd = 2;
 
     P = err;
     I += err;

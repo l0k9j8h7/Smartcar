@@ -62,6 +62,7 @@
 /*------------------------------Type Definitions------------------------------*/
 /******************************************************************************/
 
+//extern seekfree_assistant_camera_struct camera_obj;
 typedef struct
 {
     float32 sysFreq;                /**< \brief Actual SPB frequency */

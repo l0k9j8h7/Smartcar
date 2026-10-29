@@ -509,7 +509,9 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         else
             lfail++, lh--;
     }
-    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0)return -65535;
+    if(lline==-1&&rline!=-1)lline=max(0,rline-LINEWIDTH);
+    if(rline==-1&&lline!=-1)rline=min(187,lline+LINEWIDTH);
+    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0||lline==-1||rline==-1)return -65535;
     return (((float)(yuanzuo-lline)/(MT9V03X_H - 1-lh))+((float)(yuanyou-rline)/(MT9V03X_H - 1-rh)))/2;
 }
 #define MAX_CAPACITY 1
