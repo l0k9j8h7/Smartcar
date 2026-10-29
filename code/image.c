@@ -73,31 +73,48 @@ uint16 top ()
 {
     return q.queue[q.head];
 }
-ding_bi_shu_256 cha_zhi[4],wx[188],wy[120];
-uint8 kuai_kuan[188];//实际上是像素点左边第一个分块高
+ding_bi_shu_256 cha_zhi[4], wx[188], wy[120];
+uint8 kuai_kuan[188];// 像素点左边第一个分块的列索引
 uint8 kuai_gao[120];
-void image_init(){
-    for(int i=0;i<MT9V03X_H;i++){int k=i;
-    if (k <= 20)
-        k = 20;
-    else if (k >= 99)
-        k = 99;
-            kuai_gao[i]= ((i) * 2 - 39) / 80;
-        }
-    for (int i = 0; i < MT9V03X_W; i++){
-        int l=i;
-                        if (l <= 24)
-                            l = 24;
-                        else if (l >= 164)
-                            l = 164;
-        kuai_kuan[i]= ((i) * 2 - 47) / 94;
+void image_init ()
+{
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        int k = i;
+        if (k <= 20)
+            k = 20;
+        else if (k >= 99)
+            k = 99;
+        kuai_gao[i] = ((k) * 2 - 39) / 80;
     }
-    for(int i=0;i<MT9V03X_H;i++){
-        wy[i].n=(i * 2 - 39 - kuai_gao[i] * 80) * 128 / 40;
+    for (int i = 0; i < MT9V03X_W; i++)
+    {
+        int l = i;
+        if (l <= 24)
+            l = 24;
+        else if (l >= 164)
+            l = 164;
+        kuai_kuan[i] = ((l) * 2 - 47) / 94;
     }
-    for (int i = 0; i < MT9V03X_W; i++){
-           wx[i].n=(i * 2 - 47 - kuai_kuan[i] * 94) * 128 / 47;
-        }
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        int k = i;
+        if (k <= 20)
+            k = 20;
+        else if (k >= 99)
+            k = 99;
+        wy[i].n = (i * 2 - 39 - kuai_gao[k] * 80) * 128 / 40;
+    }
+    for (int i = 0; i < MT9V03X_W; i++)
+    {
+
+        int l = i;
+        if (l <= 24)
+            l = 24;
+        else if (l >= 164)
+            l = 164;
+        wx[i].n = (i * 2 - 47 - kuai_kuan[l] * 94) * 128 / 47;
+    }
 }
 //uint8 kuai_zuo_biao[MT9V03X_H][MT9V03X_W];
 void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
@@ -258,13 +275,13 @@ void double_value (uint8_t image[][MT9V03X_W])
     }
 
     {
-        int tmp1 = 0;
+
         for (int i = 0; i < MT9V03X_H; i++)
         {
-            int tmp2 = 0;
+
             for (int j = 0; j < MT9V03X_W; j++)
             {
-                int k=i,l=j;
+                int k = i, l = j;
                 uint8 *now_dot = &image[i][j];
                 huidu[*now_dot]--;
                 if (k <= 20)
@@ -275,23 +292,15 @@ void double_value (uint8_t image[][MT9V03X_W])
                     l = 24;
                 else if (l >= 164)
                     l = 164;
-                if ((k) * 2 - 39 - tmp1 * 80 >= 80)
-                {
-                    tmp1++;
-                }
-                if (((l) * 2 - 47) - tmp2 * 94 >= 94)
-                {
-                    tmp2++;
-                }
                 row_up = kuai_gao[i];
                 row_down = row_up + 1;
                 col_left = kuai_kuan[j];
                 col_right = col_left + 1;
                 /*
-                row_up = ((k) * 2 - 39) / 80;
-                row_down = row_up + 1;
-                col_left = ((l) * 2 - 47) / 94;
-                col_right = col_left + 1;*/
+                 row_up = ((k) * 2 - 39) / 80;
+                 row_down = row_up + 1;
+                 col_left = ((l) * 2 - 47) / 94;
+                 col_right = col_left + 1;*/
                 cha_zhi_update(k, l);
 
                 int32_t bu_chang =
