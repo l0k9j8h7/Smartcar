@@ -110,7 +110,7 @@ int core0_main (void)
     //引脚仅供参考
     // 此处编写用户代码 例如外设初始化代码等
     mt9v03x_set_exposure_time(100);             // 初始化时设一次就够了，不要放进主循环
-
+    image_init();
     cpu_wait_event_ready();         // 等待所有核心初始化完毕
     uint32 start_ticks = system_getval();       // ← 发车那一刻打时间戳
     uint8 if_go = 0;       //是否发车

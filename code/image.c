@@ -21,7 +21,7 @@ uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
 uint8 last_image_exist = 0;
 float now_zhi_xin_du = 0;
 float zhi_xin_du = 0.6;
-
+int16 row_up, row_down, col_left, col_right;
 typedef struct
 {
     int32 n;
@@ -73,8 +73,33 @@ uint16 top ()
 {
     return q.queue[q.head];
 }
-ding_bi_shu_256 cha_zhi[4];
-
+ding_bi_shu_256 cha_zhi[4],wx[188],wy[120];
+uint8 kuai_kuan[188];//实际上是像素点左边第一个分块高
+uint8 kuai_gao[120];
+void image_init(){
+    for(int i=0;i<MT9V03X_H;i++){int k=i;
+    if (k <= 20)
+        k = 20;
+    else if (k >= 99)
+        k = 99;
+            kuai_gao[i]= ((i) * 2 - 39) / 80;
+        }
+    for (int i = 0; i < MT9V03X_W; i++){
+        int l=i;
+                        if (l <= 24)
+                            l = 24;
+                        else if (l >= 164)
+                            l = 164;
+        kuai_kuan[i]= ((i) * 2 - 47) / 94;
+    }
+    for(int i=0;i<MT9V03X_H;i++){
+        wy[i].n=(i * 2 - 39 - kuai_gao[i] * 80) * 128 / 40;
+    }
+    for (int i = 0; i < MT9V03X_W; i++){
+           wx[i].n=(i * 2 - 47 - kuai_kuan[i] * 94) * 128 / 47;
+        }
+}
+//uint8 kuai_zuo_biao[MT9V03X_H][MT9V03X_W];
 void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 {
     if (i <= 20)
@@ -88,15 +113,10 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 
     for (int k = 0; k < 4; k++)
         cha_zhi[k].n = 0;
-    int32 row_up = (i * 2 - 39) / 80;
-    int32 col_left = (j * 2 - 47) / 94;
-    ding_bi_shu_256 wx, wy;
-    wy.n = (i * 2 - 39 - row_up * 80) * 128 / 40; //越大反而越小
-    wx.n = (j * 2 - 47 - col_left * 94) * 128 / 47;    //超级复杂的数学公式
-    cha_zhi[0].n = (256 - wy.n) * (256 - wx.n);            //放大65536倍
-    cha_zhi[1].n = (256 - wy.n) * (wx.n);
-    cha_zhi[2].n = wy.n * (256 - wx.n);
-    cha_zhi[3].n = wx.n * wy.n;
+    cha_zhi[0].n = (256 - wy[i].n) * (256 - wx[j].n);            //放大65536倍
+    cha_zhi[1].n = (256 - wy[i].n) * (wx[j].n);
+    cha_zhi[2].n = wy[i].n * (256 - wx[j].n);
+    cha_zhi[3].n = wx[j].n * wy[i].n;
 
 }
 static inline uint8 to_uint8 (int64 tmp)
@@ -236,40 +256,56 @@ void double_value (uint8_t image[][MT9V03X_W])
 
         }
     }
-    for (int i = 0; i < MT9V03X_H; i++)
+
     {
-        for (int j = 0; j < MT9V03X_W; j++)
+        int tmp1 = 0;
+        for (int i = 0; i < MT9V03X_H; i++)
         {
-            int k = i, l = j;
-            uint8 *now_dot = &image[i][j];
-            huidu[*now_dot]--;
-            if (k <= 20)
-                k = 20;
-            else if (k >= 99)
-                k = 99;
-            if (l <= 24)
-                l = 24;
-            else if (l >= 164)
-                l = 164;
+            int tmp2 = 0;
+            for (int j = 0; j < MT9V03X_W; j++)
+            {
+                int k=i,l=j;
+                uint8 *now_dot = &image[i][j];
+                huidu[*now_dot]--;
+                if (k <= 20)
+                    k = 20;
+                else if (k >= 99)
+                    k = 99;
+                if (l <= 24)
+                    l = 24;
+                else if (l >= 164)
+                    l = 164;
+                if ((k) * 2 - 39 - tmp1 * 80 >= 80)
+                {
+                    tmp1++;
+                }
+                if (((l) * 2 - 47) - tmp2 * 94 >= 94)
+                {
+                    tmp2++;
+                }
+                row_up = kuai_gao[i];
+                row_down = row_up + 1;
+                col_left = kuai_kuan[j];
+                col_right = col_left + 1;
+                /*
+                row_up = ((k) * 2 - 39) / 80;
+                row_down = row_up + 1;
+                col_left = ((l) * 2 - 47) / 94;
+                col_right = col_left + 1;*/
+                cha_zhi_update(k, l);
 
-            int16 row_up = ((k) * 2 - 39) / 80;
-            int16 row_down = row_up + 1;
-            int16 col_left = ((l) * 2 - 47) / 94;
-            int16 col_right = col_left + 1;
-            cha_zhi_update(k, l);
-
-            int64_t bu_chang =
-                    quan_jv_an_bu
-                            - ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
-                                    + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
-                                    + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
-                                    + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16)/*计算时用了wx,wy 256定比数，需要除以65536*/;
-            bu_chang = max(-40, min(40,bu_chang));
-            *now_dot = to_uint8(bu_chang + *now_dot);                 //地址
-            huidu[*now_dot]++;
+                int32_t bu_chang =
+                        quan_jv_an_bu
+                                - ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
+                                        + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
+                                        + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
+                                        + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16)/*计算时用了wx,wy 256定比数，需要除以65536*/;
+                bu_chang = max(-40, min(40,bu_chang));
+                *now_dot = to_uint8(bu_chang + *now_dot);                 //地址
+                huidu[*now_dot]++;
+            }
         }
     }
-
     minn = 255, maxn = 0;                 //重新统计min,max
     for (int i = 1; i < MT9V03X_H - 1; i++)
     {
@@ -461,14 +497,16 @@ int32 find_line (uint8_t image[][MT9V03X_W])
 float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 {
     //x为参数
-    if(x<0)return -65535;//失败回退
+    if (x < 0)
+        return -65535; //失败回退
     const int32 yuanzuo = x >> 8, yuanyou = x - (yuanzuo << 8);
     int32 lline = x >> 8, rline = x - (lline << 8), lh = MT9V03X_H - 1, rh = MT9V03X_H - 1;
     int8 lfail = 0, rfail = 0;
     while (rh > MT9V03X_H - 1 - ZUI_DA_GAO_DU /*高度相同*/&& rline != MT9V03X_W - 1/*到达地图边界或向上n格*/&& rline > lline
-            && lline != 0 && lfail <= YUN_XV_SHI_BAI_CI_SHU && rfail <= YUN_XV_SHI_BAI_CI_SHU&&rline-lline<=MAX_LINE_WIDTH)
+            && lline != 0 && lfail <= YUN_XV_SHI_BAI_CI_SHU && rfail <= YUN_XV_SHI_BAI_CI_SHU
+            && rline - lline <= MAX_LINE_WIDTH)
     {
-        while ((rline + 1) != MT9V03X_W - 1 && image[rh][rline + 1]&&rline-lline<=MAX_LINE_WIDTH)
+        while ((rline + 1) != MT9V03X_W - 1 && image[rh][rline + 1] && rline - lline <= MAX_LINE_WIDTH)
         { //一直向右转
             rline = rline + 1;
         }
@@ -488,7 +526,7 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         }
         else
             rfail++, rh--;
-        while ((lline - 1) != 0 && image[lh][lline - 1]&&rline-lline<=MAX_LINE_WIDTH)
+        while ((lline - 1) != 0 && image[lh][lline - 1] && rline - lline <= MAX_LINE_WIDTH)
         {
             lline = lline - 1;
         }
@@ -509,10 +547,13 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         else
             lfail++, lh--;
     }
-    if(lline==-1&&rline!=-1)lline=max(0,rline-LINEWIDTH);
-    if(rline==-1&&lline!=-1)rline=min(187,lline+LINEWIDTH);
-    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0||lline==-1||rline==-1)return -65535;
-    return (((float)(yuanzuo-lline)/(MT9V03X_H - 1-lh))+((float)(yuanyou-rline)/(MT9V03X_H - 1-rh)))/2;
+    if (lline == -1 && rline != -1)
+        lline = max(0, rline-LINEWIDTH);
+    if (rline == -1 && lline != -1)
+        rline = min(187, lline+LINEWIDTH);
+    if (MT9V03X_H - 1 - lh == 0 || MT9V03X_H - 1 - rh == 0 || lline == -1 || rline == -1)
+        return -65535;
+    return (((float) (yuanzuo - lline) / (MT9V03X_H - 1 - lh)) + ((float) (yuanyou - rline) / (MT9V03X_H - 1 - rh))) / 2;
 }
 #define MAX_CAPACITY 1
 void image_read (uint8_t image[][MT9V03X_W])
