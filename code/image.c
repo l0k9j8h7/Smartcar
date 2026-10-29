@@ -461,7 +461,7 @@ int32 find_line (uint8_t image[][MT9V03X_W])
 float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 {
     //x为参数
-    if(x<0)return -1;//失败回退
+    if(x<0)return -65535;//失败回退
     const int32 yuanzuo = x >> 8, yuanyou = x - (yuanzuo << 8);
     int32 lline = x >> 8, rline = x - (lline << 8), lh = MT9V03X_H - 1, rh = MT9V03X_H - 1;
     int8 lfail = 0, rfail = 0;
@@ -509,7 +509,7 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         else
             lfail++, lh--;
     }
-    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0)return -1;
+    if(MT9V03X_H - 1-lh==0||MT9V03X_H - 1-rh==0)return -65535;
     return (((float)(yuanzuo-lline)/(MT9V03X_H - 1-lh))+((float)(yuanyou-rline)/(MT9V03X_H - 1-rh)))/2;
 }
 #define MAX_CAPACITY 1

@@ -65,15 +65,16 @@ int16 pid ()
 {
     int16 output;
     float kp = 45, ki = 0, kd = 0;
-    P=min(P,80);
-    P=max(P,-80);
-    I=min(I,40);
-    I=max(I,-40);
-    D=min(D,20);
-    D=max(D,-20);
+
     P = err;
     I += err;
     D = err - last_err;
+    P = min(P, 80);
+    P = max(P, -80);
+    I = min(I, 40);
+    I = max(I, -40);
+    D = min(D, 20);
+    D = max(D, -20);
     output = kp * P + ki * I + kd * D;
     last_err = err;
     return output;
@@ -85,6 +86,7 @@ int16 pid ()
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
+#define MAX_SPEED 1000//0-10000限幅
 uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
 // **************************** 代码区域 ****************************
 int core0_main (void)
@@ -117,21 +119,32 @@ int core0_main (void)
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
-            memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);   // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
-            seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
+            memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
+            //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
 
             uint32 ticks = system_getval() - start_ticks;   //计算t
             if (ticks > START_TIME)
-                if_go = 1;//已经出发
+                if_go = 1;   //已经出发
             if (if_go)
                 ticks = START_TIME + 1;
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
             xiao_qu_yu_shan_chu(image_copy);
 
-            int64 x=find_line(image_copy);
-            int delta=pid()+min(qing_xie_du(x,image_copy)*50,150);
-            control(ticks, delta);
+            int32 x = find_line(image_copy);
+            float x1 = qing_xie_du(x, image_copy);
+            if (x1 < -100 || x1 > 100 || x >> 8 < 10 || ((x - (((x >> 8) << 8) >> 8))) > 178)
+            {
+                control(ticks, 0,MAX_SPEED/10);   // 或保持上一帧舵机
+                continue;
+            }
+            err= ((x >> 8 + ((x - ((x >> 8) << 8) >> 8))) - 187) * 50;
+            int delta = pid() + x1 * 1500 ;
+            if (delta > 150)
+                delta = 150;
+            if (delta < -150)
+                delta = -150;
+            control(ticks, (int16)(delta),MAX_SPEED);
         }
     }
 }
