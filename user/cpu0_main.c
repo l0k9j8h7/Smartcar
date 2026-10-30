@@ -60,23 +60,30 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define START_TIME 30000000//0.3s
-int16 P, I, D, err, last_err;
+#define DI_TONG_ZHI_HOU 0.55//0-1
+int16 P, I, D, err, last_err,last_last_err;
+void pid_reset(void) { I = 0; last_err = 0;last_last_err=0 ;}
 int16 pid ()
 {
     int16 output;
-    float kp = 8, ki = 4, kd = 2;
-
+    float kp = 1, ki = 0.2, kd = 0.6;
+    if (abs(err) < 100) {          // 大误差时不积分
+        I += err;
+        I = min(I, 40);  I = max(I, -40);
+    }
     P = err;
-    I += err;
-    D = err - last_err;
+    //I += err;
+    D = (err - last_err)*DI_TONG_ZHI_HOU+(last_err-last_last_err)*(1-DI_TONG_ZHI_HOU);
     P = min(P, 80);
     P = max(P, -80);
     I = min(I, 40);
     I = max(I, -40);
-    D = min(D, 20);
-    D = max(D, -20);
+    D = min(D, 50);
+    D = max(D, -50);
     output = kp * P + ki * I + kd * D;
+    last_last_err=last_err;
     last_err = err;
+
     return output;
 }
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU0的RAM中
@@ -138,10 +145,12 @@ int core0_main (void)
             if (x < 0 || x1 < -100 || x1 > 100 || lline < 10 || rline > 178)
             {
                 control(ticks, 0,MAX_SPEED/10);   // 丢线时舵机回中并降速
+                pid_reset();
                 continue;
+
             }
             err = ((lline + rline) - 187) * 15;
-            int delta = pid() + x1 * 600 ;
+            int delta = pid() + x1 * 100 ;
             if (delta > 150)
                 delta = 150;
             if (delta < -150)
