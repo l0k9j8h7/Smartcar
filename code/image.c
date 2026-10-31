@@ -1,5 +1,6 @@
 #include<image.h>
 #include<stdlib.h>
+#include"net_data.h"
 #include "zf_common_headfile.h"//头文件禁止引用头文件防止内存超限
 #pragma optimize 3   // 启用最高级别优化（对应 TASKING 的 Level 3 "Optimize most"）
 #pragma optimize +inline     // 自动函数内联：将短小且不常被多处调用的函数体直接嵌入调用处，减少调用开销（可能增大代码体积）
@@ -566,8 +567,28 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         return -65535;
     return (((float) (yuanzuo - lline) / (MT9V03X_H - 1 - lh)) + ((float) (yuanyou - rline) / (MT9V03X_H - 1 - rh))) / 2;
 }
-#define MAX_CAPACITY 1
-void image_read (uint8_t image[][MT9V03X_W])
+int32_t image_read(uint8_t image[18][18])
 {
+    int16_t c1[NCH1][16][16];//conv1结果
+    int16_t p1[NCH1][8][8];//pool1结果
+    int16_t p2[NCH1][10][10];
+    int16_t c2[NCH2][8][8];
+    int32_t gapq[NCH2];
+    conv1_int(image, c1);
+    pool1_int(c1, p1);
+    memset(p2, 0, sizeof(p2));//只写中央8*8
+    for(int i=0;i<NCH1;i++){
+        for(int r=0;r<8;r++){
+            for(int c=0;c<8;c++){
+                p2[i][r + 1][c + 1] = p1[i][r][c];
+//边缘全为0
+            }
+        }
+    }
+    conv2_int(p2,c2);
+    gap_int(c2,gapq);
+    return max_score(gapq,0);
+
+
 
 }

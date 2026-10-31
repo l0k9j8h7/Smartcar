@@ -131,7 +131,7 @@ int core0_main (void)
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
             copy_flag++;
-            while(copy_flag>=60){
+            while(copy_flag>=ZU_SE_ZHEN_SHU){
                 //wait
             }
             uint32 ticks = system_getval() - start_ticks;   //计算t
@@ -154,7 +154,7 @@ int core0_main (void)
                 continue;
 
             }
-            err = ((lline + rline) - 187) * 15;
+            err = ((lline + rline) - 187) ;
             int delta = pid() + x1 * 100 ;
             if (delta > 150)
                 delta = 150;

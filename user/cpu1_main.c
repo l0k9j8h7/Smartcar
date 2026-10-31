@@ -34,6 +34,7 @@
  ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
+#include "control.h"
 extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 /* camera_obj 定义在 cpu0_main.c 里，这里只声明不定义，告诉编译器它存在于别的文件 */
 volatile uint8 copy_flag=0;
@@ -61,7 +62,7 @@ void core1_main (void)
         // 此处编写需要循环执行的代码
         while (TRUE)
         {
-            if (copy_flag>=60)
+            if (copy_flag>=ZU_SE_ZHEN_SHU)
             {           // 由 CPU0 置位的"可发送"标志
                 memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
 
