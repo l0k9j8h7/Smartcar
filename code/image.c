@@ -74,9 +74,9 @@ uint16 top ()
     return q.queue[q.head];
 }
 ding_bi_shu_256 cha_zhi[4], wx[188], wy[120];
-uint8 kuai_kuan[188];// 像素点左边第一个分块的列索引
+uint8 kuai_kuan[188]; // 像素点左边第一个分块的列索引
 uint8 kuai_gao[120];
-void image_init ()
+void image_init (void)
 {
     for (int i = 0; i < MT9V03X_H; i++)
     {
@@ -103,7 +103,7 @@ void image_init ()
             k = 20;
         else if (k >= 99)
             k = 99;
-        wy[i].n = (i * 2 - 39 - kuai_gao[k] * 80) * 128 / 40;
+        wy[i].n = (k * 2 - 39 - kuai_gao[k] * 80) * 128 / 40;
     }
     for (int i = 0; i < MT9V03X_W; i++)
     {
@@ -113,7 +113,7 @@ void image_init ()
             l = 24;
         else if (l >= 164)
             l = 164;
-        wx[i].n = (i * 2 - 47 - kuai_kuan[l] * 94) * 128 / 47;
+        wx[i].n = (l * 2 - 47 - kuai_kuan[l] * 94) * 128 / 47;
     }
 }
 //uint8 kuai_zuo_biao[MT9V03X_H][MT9V03X_W];
@@ -127,14 +127,14 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
         j = 24;
     else if (j >= 164)
         j = 164; //使用最外围的点求值
-
-    for (int k = 0; k < 4; k++)
-        cha_zhi[k].n = 0;
-    cha_zhi[0].n = (256 - wy[i].n) * (256 - wx[j].n);            //放大65536倍
-    cha_zhi[1].n = (256 - wy[i].n) * (wx[j].n);
-    cha_zhi[2].n = wy[i].n * (256 - wx[j].n);
-    cha_zhi[3].n = wx[j].n * wy[i].n;
-
+    /*
+     for (int k = 0; k < 4; k++)
+     cha_zhi[k].n = 0;
+     cha_zhi[0].n = (256 - wy[i].n) * (256 - wx[j].n);            //放大65536倍
+     cha_zhi[1].n = (256 - wy[i].n) * (wx[j].n);
+     cha_zhi[2].n = wy[i].n * (256 - wx[j].n);
+     cha_zhi[3].n = wx[j].n * wy[i].n;
+     */
 }
 static inline uint8 to_uint8 (int64 tmp)
 {
@@ -296,19 +296,21 @@ void double_value (uint8_t image[][MT9V03X_W])
                 row_down = row_up + 1;
                 col_left = kuai_kuan[j];
                 col_right = col_left + 1;
-                /*
-                 row_up = ((k) * 2 - 39) / 80;
-                 row_down = row_up + 1;
-                 col_left = ((l) * 2 - 47) / 94;
-                 col_right = col_left + 1;*/
                 cha_zhi_update(k, l);
+                const int32_t A = fen_kuai_bu_chang[row_up][col_left];
+                const int32_t B = fen_kuai_bu_chang[row_down][col_left];
+                const int32_t C = fen_kuai_bu_chang[row_up][col_right];
+                const int32_t D = fen_kuai_bu_chang[row_down][col_right];
+                int32_t rvL = A + (((B - A) * wy[i].n) >> 8);          // 左边竖线上的点
+                int32_t rvR = C + (((D - C) * wy[i].n) >> 8);          // 右边竖线上的点
+                int32_t val = rvL + (((rvR - rvL) * wx[j].n) >> 8);    // 最终值
 
-                int32_t bu_chang =
-                        quan_jv_an_bu
-                                - ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
-                                        + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
-                                        + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
-                                        + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16)/*计算时用了wx,wy 256定比数，需要除以65536*/;
+                int32_t bu_chang = quan_jv_an_bu - val;
+                  /* ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
+                 + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
+                 + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
+                 + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16);//计算时用了wx,wy 256定比数，需要除以65536
+                 */
                 bu_chang = max(-40, min(40,bu_chang));
                 *now_dot = to_uint8(bu_chang + *now_dot);                 //地址
                 huidu[*now_dot]++;
