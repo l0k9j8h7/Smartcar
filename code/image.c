@@ -73,7 +73,7 @@ uint16 top ()
 {
     return q.queue[q.head];
 }
-ding_bi_shu_256 cha_zhi[4], wx[188], wy[120];
+ding_bi_shu_256 wx[188], wy[120];
 uint8 kuai_kuan[188]; // 像素点左边第一个分块的列索引
 uint8 kuai_gao[120];
 void image_init (void)

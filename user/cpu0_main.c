@@ -61,6 +61,8 @@
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define START_TIME 30000000//0.3s
 #define DI_TONG_ZHI_HOU 0.55//0-1
+extern volatile uint8 copy_flag;
+extern uint8_t copy [MT9V03X_H][MT9V03X_W];
 int16 P, I, D, err, last_err,last_last_err;
 void pid_reset(void) { I = 0; last_err = 0;last_last_err=0 ;}
 int16 pid ()
@@ -106,12 +108,12 @@ int core0_main (void)
     encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
     pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
     pwm_init(ATOM0_CH1_P33_9, 50, 750);    //舵机
-    gpio_init(P33_1, GPO, 0, GPO_PUSH_PULL);
+    gpio_init(P33_1, GPO, 1, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(&camera_obj, SEEKFREE_ASSISTANT_CAMERA_TYPE_MT9V03X,
     MT9V03X_W,              // 图像宽度，通常是 188
             MT9V03X_H,              // 图像高度，通常是 120
-            image_copy              // 传入备份缓冲区地址
+            copy              // 传入备份缓冲区地址
             );
 
     //引脚仅供参考
@@ -128,7 +130,10 @@ int core0_main (void)
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
-
+            copy_flag++;
+            while(copy_flag>=60){
+                //wait
+            }
             uint32 ticks = system_getval() - start_ticks;   //计算t
             if (ticks > START_TIME)
                 if_go = 1;   //已经出发

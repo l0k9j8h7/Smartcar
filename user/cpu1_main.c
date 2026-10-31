@@ -34,8 +34,9 @@
  ********************************************************************************************************************/
 
 #include "zf_common_headfile.h"
-
+extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 /* camera_obj 定义在 cpu0_main.c 里，这里只声明不定义，告诉编译器它存在于别的文件 */
+volatile uint8 copy_flag=0;
 extern seekfree_assistant_camera_struct camera_obj;
 #pragma section all "cpu1_dsram"
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU1的RAM中
@@ -45,7 +46,8 @@ extern seekfree_assistant_camera_struct camera_obj;
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
-
+uint8_t copy[MT9V03X_H][MT9V03X_W];
+extern seekfree_assistant_camera_struct camera_obj;
 void core1_main (void)
 {
     disable_Watchdog();                     // 关闭看门狗
@@ -59,10 +61,13 @@ void core1_main (void)
         // 此处编写需要循环执行的代码
         while (TRUE)
         {
-            if (mt9v03x_finish_flag)
+            if (copy_flag>=60)
             {           // 由 CPU0 置位的"可发送"标志
-                seekfree_assistant_camera_send(&camera_obj);
+                memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
+
+                copy_flag=0;
             }
+            seekfree_assistant_camera_send(&camera_obj);
         }
 
         // 此处编写需要循环执行的代码
