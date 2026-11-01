@@ -62,20 +62,27 @@
 #define START_TIME 30000000//0.3s
 #define DI_TONG_ZHI_HOU 0.55//0-1
 extern volatile uint8 copy_flag;
-extern uint8_t copy [MT9V03X_H][MT9V03X_W];
-int16 P, I, D, err, last_err,last_last_err;
-void pid_reset(void) { I = 0; last_err = 0;last_last_err=0 ;}
+extern uint8_t copy[MT9V03X_H][MT9V03X_W];
+int16 P, I, D, err, last_err, last_last_err;
+void pid_reset (void)
+{
+    I = 0;
+    last_err = 0;
+    last_last_err = 0;
+}
 int16 pid ()
 {
     int16 output;
     float kp = 1, ki = 0.2, kd = 0.6;
-    if (abs(err) < 100) {          // 大误差时不积分
+    if (abs(err) < 100)
+    {          // 大误差时不积分
         I += err;
-        I = min(I, 40);  I = max(I, -40);
+        I = min(I, 40);
+        I = max(I, -40);
     }
     P = err;
     //I += err;
-    D = (err - last_err)*DI_TONG_ZHI_HOU+(last_err-last_last_err)*(1-DI_TONG_ZHI_HOU);
+    D = (err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU);
     P = min(P, 80);
     P = max(P, -80);
     I = min(I, 40);
@@ -83,7 +90,7 @@ int16 pid ()
     D = min(D, 50);
     D = max(D, -50);
     output = kp * P + ki * I + kd * D;
-    last_last_err=last_err;
+    last_last_err = last_err;
     last_err = err;
 
     return output;
@@ -131,7 +138,8 @@ int core0_main (void)
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
             copy_flag++;
-            while(copy_flag>=ZU_SE_ZHEN_SHU){
+            while (copy_flag >= ZU_SE_ZHEN_SHU)
+            {
                 //wait
             }
             uint32 ticks = system_getval() - start_ticks;   //计算t
@@ -142,25 +150,30 @@ int core0_main (void)
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
             xiao_qu_yu_shan_chu(image_copy);
-
-            int32 x = find_line(image_copy);
+            int tmp = MT9V03X_H - 1;
+            int32 x = find_line(image_copy, MT9V03X_H - 1);
+            while (x == -1)
+            {
+                tmp--;
+                x = find_line(image_copy, tmp);
+            }
             float x1 = qing_xie_du(x, image_copy);
-            int lline = (x >> 8) & 0xFF;                  /* 左边界列 0~187 */
-            int rline = x & 0xFF;                         /* 右边界列 0~187 */
+            int lline = (x >> 8) & 0xFF; /* 左边界列 0~187 */
+            int rline = x & 0xFF; /* 右边界列 0~187 */
             if (x < 0 || x1 < -100 || x1 > 100 || lline < 10 || rline > 178)
             {
-                control(ticks, 0,MAX_SPEED/10);   // 丢线时舵机回中并降速
+                control(ticks, 0, MAX_SPEED / 10);   // 丢线时舵机回中并降速
                 pid_reset();
                 continue;
 
             }
-            err = ((lline + rline) - 187) ;
-            int delta = pid() + x1 * 100 ;
+            err = ((lline + rline) - 187);
+            int delta = pid() + x1 * 100;
             if (delta > 150)
                 delta = 150;
             if (delta < -150)
                 delta = -150;
-            control(ticks, (int16)(delta),MAX_SPEED);
+            control(ticks, (int16) (delta), MAX_SPEED);
         }
     }
 }

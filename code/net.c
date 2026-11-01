@@ -4,7 +4,7 @@
 #define W 24
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-static void conv1_int (const uint8_t g[][18], int16 out[NCH1][16][16])
+void conv1_int (const uint8_t g[][18], int16 out[NCH1][16][16])
 {
     int on, r, c, dr, dc, i; //r,c:核偏移,dr,dc:核内偏移,i:第多少个权重,on:卷积核种类
     for (on = 0; on < NCH1; on++)
@@ -30,7 +30,7 @@ static void conv1_int (const uint8_t g[][18], int16 out[NCH1][16][16])
     }
 
 } //池化 ->4x8x8
-static void pool1_int (const int16_t in[NCH1][16][16], int16_t out[NCH1][8][8])
+void pool1_int (const int16_t in[NCH1][16][16], int16_t out[NCH1][8][8])
 {
     for (int on = 0; on < NCH1; on++)
     {
@@ -45,7 +45,7 @@ static void pool1_int (const int16_t in[NCH1][16][16], int16_t out[NCH1][8][8])
     }
 }
 
-static void conv2_int (const int16_t p[NCH1][10][10], int16_t out[NCH2][8][8])
+void conv2_int (const int16_t p[NCH1][10][10], int16_t out[NCH2][8][8])
 {
     for (int r = 0; r < 8; r++)
     {
@@ -84,7 +84,7 @@ static void conv2_int (const int16_t p[NCH1][10][10], int16_t out[NCH2][8][8])
         }
     }
 }
-static void gap_int (const int16_t in[NCH2][8][8], int32_t out[NCH2])
+void gap_int (const int16_t in[NCH2][8][8], int32_t out[NCH2])
 { //全局平均池化
     for (int on = 0; on < NCH2; on++)
     {
@@ -100,7 +100,7 @@ static void gap_int (const int16_t in[NCH2][8][8], int32_t out[NCH2])
         out[on] = sum;
     }
 }
-static int32_t max_score (const int32_t in[NCH2], int32_t *out)
+int32_t max_score (const int32_t in[NCH2], int32_t *out)
 {
     int32_t best = -1;
     int32_t best_v = INT32_MIN; //-1

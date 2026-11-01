@@ -307,7 +307,7 @@ void double_value (uint8_t image[][MT9V03X_W])
                 int32_t val = rvL + (((rvR - rvL) * wx[j].n) >> 8);    // 最终值
 
                 int32_t bu_chang = quan_jv_an_bu - val;
-                  /* ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
+                /* ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
                  + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
                  + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
                  + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16);//计算时用了wx,wy 256定比数，需要除以65536
@@ -460,24 +460,24 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
 }
 #define LINEWIDTH 7
 #define YOUXIAOXIANKUAN 5
-int32 find_line (uint8_t image[][MT9V03X_W])
+int32 find_line (uint8_t image[][MT9V03X_W], int height)
 { //返回方向值(delta1)
     int sum1 = 0, sum2 = 0, max1 = 0, max2 = 0;
     int lline = -1, rline = -1, lmax = -1, rmax = -1;
     for (int i = 0; i < LINEWIDTH; i++)
     { //滑动数组来求线,先求右边线
         int j = MT9V03X_W - i - 1;
-        sum1 += image[MT9V03X_H - 1][i]; //最下端寻找
-        sum2 += image[MT9V03X_H - 1][j];
+        sum1 += image[height][i]; //最下端寻找
+        sum2 += image[height][j];
     }
     for (int i = LINEWIDTH; i < MT9V03X_W; i++)
     {
         int j = MT9V03X_W - i - 1;
-        sum1 -= image[MT9V03X_H - 1][i - LINEWIDTH];
-        sum2 -= image[MT9V03X_H - 1][j + LINEWIDTH];
-        sum1 += image[MT9V03X_H - 1][i];
-        sum2 += image[MT9V03X_H - 1][j];
-        if (sum1 >= YOUXIAOXIANKUAN && image[MT9V03X_H - 1][i] != 0)
+        sum1 -= image[height][i - LINEWIDTH];
+        sum2 -= image[height][j + LINEWIDTH];
+        sum1 += image[height][i];
+        sum2 += image[height][j];
+        if (sum1 >= YOUXIAOXIANKUAN && image[height][i] != 0)
         {
             rline = i;
         }
@@ -486,7 +486,7 @@ int32 find_line (uint8_t image[][MT9V03X_W])
             max1 = sum1;
             rmax = i;
         }
-        if (sum2 >= YOUXIAOXIANKUAN && image[MT9V03X_H - 1][j] != 0)
+        if (sum2 >= YOUXIAOXIANKUAN && image[height][j] != 0)
         {
             lline = j;
         }
@@ -503,9 +503,50 @@ int32 find_line (uint8_t image[][MT9V03X_W])
     return (lline << 8) + rline; //返回左右的值
 
 }
-#define ZUI_DA_GAO_DU 50
+#define SECTIONWIDTH 5
+#define MAXSECTIONS 8
+int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
+{ //0->l 1->r,返回段的个数
+    int sum = 0;
+    uint8 flag = 0;
+    for (int i = 0; i < MT9V03X_W; i++)
+    {
+        if (p[h][i])
+        {
+            if (flag == 0)
+            {
+                flag = 1;
+                s[sum][0] = i;
+                //sum++;
+            }
+            if (i == MT9V03X_H - 1)
+            {
+                s[sum][1] = i;
+            }
+        }
+        else
+        {
+            if (flag == 1)
+            {
+                flag = 0;
+                if (i - s[sum][0] < SECTIONWIDTH)
+                {
+                    s[sum][0] = 0;
+                }
+                else
+                {
+                    s[sum][1] = i - 1;
+                    sum++;
+                }
+            }
+        }
+    }
+    return sum > MAXSECTIONS ? 0 : sum;
+}
+#define ZUI_DA_GAO_DU 50//仅仅用于计算斜率
 #define YUN_XV_SHI_BAI_CI_SHU 5
 #define MAX_LINE_WIDTH 80
+
 float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 {
     //x为参数
@@ -567,28 +608,104 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         return -65535;
     return (((float) (yuanzuo - lline) / (MT9V03X_H - 1 - lh)) + ((float) (yuanyou - rline) / (MT9V03X_H - 1 - rh))) / 2;
 }
-int32_t image_read(uint8_t image[18][18])
+#define MAX_BIAS 50
+#define MAX_BOX 5
+#define MIN_BOX_HEIGHT 10
+#define MAX_HEIGHT 80//仅仅用于计算box的最大可出现像素
+uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
 {
-    int16_t c1[NCH1][16][16];//conv1结果
-    int16_t p1[NCH1][8][8];//pool1结果
+    uint8 s[MAXSECTIONS][2] = {{0}};
+    uint8 tmp = 0;
+    uint8 flag = 0;
+    int prc = MT9V03X_W / 2;
+    for (int i = MT9V03X_H - 1; i > MT9V03X_H - 1 - MAX_HEIGHT; i--)
+    {
+        if (tmp >= MAX_BOX)
+            break;
+        int sum = find_section(image, i, s);
+        if (sum == -1 || sum == 0)
+        {
+            continue;
+        }
+        int best = -1, best_v = 0xFF, best_p = -1;
+        for (int i = 0; i < sum; i++)
+        {
+            int16_t mid = (s[i][0] + s[i][1]) >> 1;
+            if (abs(mid-prc) < best_v)
+            {
+
+                best_v = abs(mid - prc);
+                best = mid;
+                best_p = i;
+            }
+        }
+        if (best_v <= MAX_BIAS && (i <= MT9V03X_H - 6 || s[best_p][1] >= prc && s[best_p][0] <= prc))
+            prc = best;
+
+        if (sum >= 2)
+        {
+            if (flag == 0)
+            {
+                flag = 1;
+                box[tmp][0][0] = s[0][0]; //0->x,1->y
+                box[tmp][0][1] = i;
+                box[tmp][1][0] = s[sum - 1][1];
+                box[tmp][1][1] = i;
+                box[tmp][2][1] = i;
+                box[tmp][3][1] = i;
+            }
+            else
+            {
+                box[tmp][2][0] = s[0][0]; //0->x,1->y
+                box[tmp][2][1] = i;
+                box[tmp][3][0] = s[sum - 1][1];
+                box[tmp][3][1] = i;
+            }
+            //image_read
+        }
+        else
+        {
+            if (flag == 1)
+            {
+                flag = 0;
+                if (box[tmp][0][1] - box[tmp][3][1] < MIN_BOX_HEIGHT)
+                    continue;
+                tmp++;
+            }
+            //sum==1
+        }
+
+    }
+    if (flag == 1)
+    {
+        if (box[tmp][0][1] - box[tmp][3][1] >= MIN_BOX_HEIGHT && tmp < MAX_BOX)
+            tmp++;
+    }
+    return tmp;
+}
+int32_t image_read (uint8_t image[18][18])
+{
+    int16_t c1[NCH1][16][16]; //conv1结果
+    int16_t p1[NCH1][8][8]; //pool1结果
     int16_t p2[NCH1][10][10];
     int16_t c2[NCH2][8][8];
     int32_t gapq[NCH2];
     conv1_int(image, c1);
     pool1_int(c1, p1);
-    memset(p2, 0, sizeof(p2));//只写中央8*8
-    for(int i=0;i<NCH1;i++){
-        for(int r=0;r<8;r++){
-            for(int c=0;c<8;c++){
+    memset(p2, 0, sizeof(p2)); //只写中央8*8
+    for (int i = 0; i < NCH1; i++)
+    {
+        for (int r = 0; r < 8; r++)
+        {
+            for (int c = 0; c < 8; c++)
+            {
                 p2[i][r + 1][c + 1] = p1[i][r][c];
 //边缘全为0
             }
         }
     }
-    conv2_int(p2,c2);
-    gap_int(c2,gapq);
-    return max_score(gapq,0);
-
-
+    conv2_int(p2, c2);
+    gap_int(c2, gapq);
+    return max_score(gapq, 0);
 
 }
