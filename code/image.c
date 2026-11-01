@@ -500,6 +500,10 @@ int32 find_line (uint8_t image[][MT9V03X_W], int height)
     {
         return (max2 != 0 && max1 != 0) ? (lmax << 8) + rmax : (-1); //<0
     }
+    if (lline == -1)
+        lline = max(rline-LINEWIDTH, 0);
+    if (rline == -1)
+        rline = min(lline-LINEWIDTH, 187);
     return (lline << 8) + rline; //返回左右的值
 
 }
@@ -611,9 +615,10 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 #define MAX_BIAS 50
 #define MAX_BOX 5
 #define MIN_BOX_HEIGHT 10
+#define ZUI_XIAO_LU_KOU_KUAN_DU 65
 #define MAX_HEIGHT 80//仅仅用于计算box的最大可出现像素
 uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
-{
+{//返回框的数量，但是找到路口返回255
     uint8 s[MAXSECTIONS][2] = {{0}};
     uint8 tmp = 0;
     uint8 flag = 0;
@@ -628,18 +633,18 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
             continue;
         }
         int best = -1, best_v = 0xFF, best_p = -1;
-        for (int i = 0; i < sum; i++)
+        for (int j = 0; j < sum; j++)
         {
-            int16_t mid = (s[i][0] + s[i][1]) >> 1;
+            int16_t mid = (s[j][0] + s[j][1]) >> 1;
             if (abs(mid-prc) < best_v)
             {
 
                 best_v = abs(mid - prc);
                 best = mid;
-                best_p = i;
+                best_p = j;
             }
         }
-        if (best_v <= MAX_BIAS && (i <= MT9V03X_H - 6 || s[best_p][1] >= prc && s[best_p][0] <= prc))
+        if (best_v <= MAX_BIAS && (i <= MT9V03X_H - 6 ||( s[best_p][1] >= prc && s[best_p][0] <= prc)))
             prc = best;
 
         if (sum >= 2)
@@ -652,19 +657,23 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
                 box[tmp][1][0] = s[sum - 1][1];
                 box[tmp][1][1] = i;
                 box[tmp][2][1] = i;
+                box[tmp][2][0] = s[0][0];
                 box[tmp][3][1] = i;
+                box[tmp][3][0] = s[sum - 1][1];
             }
             else
             {
-                box[tmp][2][0] = s[0][0]; //0->x,1->y
+                box[tmp][2][0] = min(box[tmp][2][0], s[0][0]); //0->x,1->y
                 box[tmp][2][1] = i;
-                box[tmp][3][0] = s[sum - 1][1];
+                box[tmp][3][0] = max(box[tmp][3][0], s[sum - 1][1]);
                 box[tmp][3][1] = i;
             }
             //image_read
         }
         else
         {
+            //sum==1
+            if(s[0][1]-s[0][0]>=ZUI_XIAO_LU_KOU_KUAN_DU)return 255;//255代表找到路口
             if (flag == 1)
             {
                 flag = 0;
@@ -707,5 +716,4 @@ int32_t image_read (uint8_t image[18][18])
     conv2_int(p2, c2);
     gap_int(c2, gapq);
     return max_score(gapq, 0);
-
 }
