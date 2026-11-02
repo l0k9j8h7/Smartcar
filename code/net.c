@@ -100,7 +100,7 @@ void gap_int (const int16_t in[NCH2][8][8], int32_t out[NCH2])
         out[on] = sum;
     }
 }
-int32_t max_score (const int32_t in[NCH2], int32_t *out)
+int32_t max_score_kind (const int32_t in[NCH2], int32_t *out)
 {
     int32_t best = -1;
     int32_t best_v = INT32_MIN; //-1

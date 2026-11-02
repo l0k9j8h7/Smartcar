@@ -137,7 +137,7 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
      cha_zhi[3].n = wx[j].n * wy[i].n;
      */
 }
-static inline uint8 to_uint8 (int64 tmp)
+static inline uint8 to_uint8 (int32 tmp)
 {
     return (uint8) (max(min(tmp,255), 0));
 }
@@ -523,7 +523,7 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
                 s[sum][0] = i;
                 //sum++;
             }
-            if (i == MT9V03X_H - 1)
+            if (i == MT9V03X_W - 1)
             {
                 s[sum][1] = i;
             }
@@ -618,7 +618,7 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 #define ZUI_XIAO_LU_KOU_KUAN_DU 65
 #define MAX_HEIGHT 80//仅仅用于计算box的最大可出现像素
 uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
-{//返回框的数量，但是找到路口返回255
+{ //返回框的数量，但是找到路口返回255
     uint8 s[MAXSECTIONS][2] = {{0}};
     uint8 tmp = 0;
     uint8 flag = 0;
@@ -644,7 +644,7 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
                 best_p = j;
             }
         }
-        if (best_v <= MAX_BIAS && (i <= MT9V03X_H - 6 ||( s[best_p][1] >= prc && s[best_p][0] <= prc)))
+        if (best_v <= MAX_BIAS && (i <= MT9V03X_H - 6 || (s[best_p][1] >= prc && s[best_p][0] <= prc)))
             prc = best;
 
         if (sum >= 2)
@@ -653,27 +653,28 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
             {
                 flag = 1;
                 box[tmp][0][0] = s[0][0]; //0->x,1->y
-                box[tmp][0][1] = i;
+                box[tmp][0][1] = (uint8)i;
                 box[tmp][1][0] = s[sum - 1][1];
-                box[tmp][1][1] = i;
-                box[tmp][2][1] = i;
+                box[tmp][1][1] = (uint8)i;
+                box[tmp][2][1] = (uint8)i;
                 box[tmp][2][0] = s[0][0];
-                box[tmp][3][1] = i;
+                box[tmp][3][1] = (uint8)i;
                 box[tmp][3][0] = s[sum - 1][1];
             }
             else
             {
                 box[tmp][2][0] = min(box[tmp][2][0], s[0][0]); //0->x,1->y
-                box[tmp][2][1] = i;
+                box[tmp][2][1] = (uint8)i;
                 box[tmp][3][0] = max(box[tmp][3][0], s[sum - 1][1]);
-                box[tmp][3][1] = i;
+                box[tmp][3][1] = (uint8)i;
             }
             //image_read
         }
         else
         {
             //sum==1
-            if(s[0][1]-s[0][0]>=ZUI_XIAO_LU_KOU_KUAN_DU)return 255;//255代表找到路口
+            if (s[0][1] - s[0][0] >= ZUI_XIAO_LU_KOU_KUAN_DU)
+                return 255; //255代表找到路口
             if (flag == 1)
             {
                 flag = 0;
@@ -692,16 +693,21 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
     }
     return tmp;
 }
-int32_t image_read (uint8_t image[18][18])
+int16_t c1[NCH1][16][16]; //conv1结果
+int16_t p1[NCH1][8][8]; //pool1结果
+int16_t p2[NCH1][10][10];
+int16_t c2[NCH2][8][8];
+
+int32_t read_ele (uint8_t image[18][18])
 {
-    int16_t c1[NCH1][16][16]; //conv1结果
-    int16_t p1[NCH1][8][8]; //pool1结果
-    int16_t p2[NCH1][10][10];
-    int16_t c2[NCH2][8][8];
+    memset(c2, 0, sizeof(c2));
+    memset(c1, 0, sizeof(c1));
+    memset(p1, 0, sizeof(p1));
+    memset(p2, 0, sizeof(p2));
     int32_t gapq[NCH2];
     conv1_int(image, c1);
     pool1_int(c1, p1);
-    memset(p2, 0, sizeof(p2)); //只写中央8*8
+    //只写中央8*8
     for (int i = 0; i < NCH1; i++)
     {
         for (int r = 0; r < 8; r++)
@@ -715,5 +721,57 @@ int32_t image_read (uint8_t image[18][18])
     }
     conv2_int(p2, c2);
     gap_int(c2, gapq);
-    return max_score(gapq, 0);
+    return max_score_kind(gapq, 0);
+}
+
+uint16_t g[18][18];
+int box[MAX_BOX][4][2];
+#define MIN_AREA_AVR_LEN 24
+uint8 image_read (uint8_t image[][MT9V03X_W],uint8_t result[])//返回box个数，result是类别
+{
+    memset(box, 0, sizeof(box));
+    int k =(int) find_boxes(image, box);
+    if (k == 255){
+        result[0]=255;
+        return 0;
+    }
+
+    uint8_t cnt[18][18]; //处理后的数组
+    uint32 kind = 0;
+    for (int i = 0; i < k; i++)
+    {
+        memset(g, 0, sizeof(g));
+        memset(cnt, 0, sizeof(cnt));
+        int box_left = box[i][0][0], box_right = box[i][1][0] + 1, box_top = box[i][2][1], box_bottom = box[i][0][1]
+                + 1;
+        int box_center_x = (box_left + box_right) >> 1, box_center_y = (box_top + box_bottom) >> 1;
+        if (min(box_right-box_left,box_bottom-box_top) >= MIN_AREA_AVR_LEN)
+        {
+            int sqr_len = max(box_right - box_left, box_bottom - box_top);
+            for (int l = 0; l < sqr_len; l++)
+            {
+                for (int j = 0; j < sqr_len; j++)
+                {
+                    int x = box_center_x - (sqr_len >> 1) + l, y = box_center_y - (sqr_len >> 1) + j;
+                    int xs = (x - box_left) * 18 / sqr_len, ys = (y - box_top) * 18 / sqr_len;
+                    //int xe = xs + 1, ye = ys + 1;
+                    if (x >= box_left && x < box_right && y < box_bottom && y >= box_top)
+                    {
+                        g[ys][xs] += image[y][x];
+                        cnt[ys][xs]++;
+                    }
+                }
+            }
+            for(int m=0;m<18;m++){
+                for(int n=0;n<18;n++){
+                    if(cnt[m][n]==0)g[m][n]=0;
+                    else g[m][n]=g[m][n]/cnt[m][n];
+                }
+            }
+            kind = (int)read_ele(g);
+        }
+        else kind = 0;
+        result[i]=kind;
+    }
+    return k;
 }

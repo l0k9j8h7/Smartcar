@@ -40,6 +40,7 @@ extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 volatile uint8 copy_flag=0;
 extern seekfree_assistant_camera_struct camera_obj;
 #pragma section all "cpu1_dsram"
+uint8 busy=0;
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU1的RAM中
 
 // **************************** 代码区域 ****************************
@@ -64,11 +65,14 @@ void core1_main (void)
         {
             if (copy_flag>=ZU_SE_ZHEN_SHU)
             {           // 由 CPU0 置位的"可发送"标志
+
                 memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
 
                 copy_flag=0;
-            }
+
+            }busy=1;
             seekfree_assistant_camera_send(&camera_obj);
+            busy=0;
         }
 
         // 此处编写需要循环执行的代码

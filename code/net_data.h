@@ -21,5 +21,5 @@ static const int32_t FB[16]; //È«Á¬½ÓÆ«ÖÃ
 void conv1_int (const uint8_t g[][18], int16 out[NCH1][16][16]);
 void conv2_int (const int16_t p[NCH1][10][10], int16_t out[NCH2][8][8]);
 void gap_int (const int16_t in[NCH2][8][8], int32_t out[NCH2]);
-int32_t max_score (const int32_t in[NCH2], int32_t *out);
+int32_t max_score_kind (const int32_t in[NCH2], int32_t *out);
 void pool1_int (const int16_t in[NCH1][16][16], int16_t out[NCH1][8][8]);

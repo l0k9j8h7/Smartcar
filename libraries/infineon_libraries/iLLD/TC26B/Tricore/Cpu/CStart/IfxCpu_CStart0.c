@@ -86,7 +86,7 @@
 IFXCOMPILER_COMMON_LINKER_SYMBOLS()
 IFXCOMPILER_CORE_LINKER_SYMBOLS(0)
 
-IFX_EXTERN void core0_main(void); // @suppress("Unused function declaration")
+IFX_EXTERN void core0_main (void); // @suppress("Unused function declaration")
 #if defined(__TASKING__)
 __asm("\t .extern core0_main");
 #endif

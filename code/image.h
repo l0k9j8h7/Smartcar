@@ -9,3 +9,4 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W]);
 uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2]);
 void image_init (void);
 int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2]);
+uint8 image_read (uint8_t image[][MT9V03X_W],uint8_t result[]);//返回box个数，result是类别

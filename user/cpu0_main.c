@@ -57,12 +57,15 @@
 #pragma section all "cpu0_dsram"
 #include"control.h"
 #include"image.h"
+
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
+
 #define START_TIME 30000000//0.3s
 #define DI_TONG_ZHI_HOU 0.55//0-1
 extern volatile uint8 copy_flag;
 extern uint8_t copy[MT9V03X_H][MT9V03X_W];
+extern uint8 busy;
 int16 P, I, D, err, last_err, last_last_err;
 void pid_reset (void)
 {
@@ -138,7 +141,7 @@ int core0_main (void)
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
             copy_flag++;
-            while (copy_flag >= ZU_SE_ZHEN_SHU)
+            while (copy_flag >= ZU_SE_ZHEN_SHU&&!busy)
             {
                 //wait
             }
