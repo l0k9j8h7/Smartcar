@@ -40,7 +40,7 @@ extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 volatile uint8 copy_flag=0;
 extern seekfree_assistant_camera_struct camera_obj;
 #pragma section all "cpu1_dsram"
-uint8 busy=0;
+volatile uint8 busy=0;
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU1的RAM中
 
 // **************************** 代码区域 ****************************

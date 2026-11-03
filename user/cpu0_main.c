@@ -61,43 +61,10 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-#define START_TIME 30000000//0.3s
-#define DI_TONG_ZHI_HOU 0.55//0-1
 extern volatile uint8 copy_flag;
 extern uint8_t copy[MT9V03X_H][MT9V03X_W];
-extern uint8 busy;
-int16 P, I, D, err, last_err, last_last_err;
-void pid_reset (void)
-{
-    I = 0;
-    last_err = 0;
-    last_last_err = 0;
-}
-int16 pid ()
-{
-    int16 output;
-    float kp = 1, ki = 0.2, kd = 0.6;
-    if (abs(err) < 100)
-    {          // 大误差时不积分
-        I += err;
-        I = min(I, 40);
-        I = max(I, -40);
-    }
-    P = err;
-    //I += err;
-    D = (err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU);
-    P = min(P, 80);
-    P = max(P, -80);
-    I = min(I, 40);
-    I = max(I, -40);
-    D = min(D, 50);
-    D = max(D, -50);
-    output = kp * P + ki * I + kd * D;
-    last_last_err = last_err;
-    last_err = err;
+extern  volatile uint8 busy;
 
-    return output;
-}
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU0的RAM中
 
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
@@ -106,6 +73,7 @@ int16 pid ()
 seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
 #define MAX_SPEED 1000//0-10000限幅
+extern volatile int16 err;
 uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
 // **************************** 代码区域 ****************************
 int core0_main (void)
@@ -115,6 +83,7 @@ int core0_main (void)
     system_start(); //计时启动
     // 此处编写用户代码 例如外设初始化代码等
     zf_log(mt9v03x_init(), "mt9v03x init error");
+    //encoder_quad_init(TIM4_ENCODER,TIM4_ENCODER_CH1_P33_9, TIM4_ENCODER_CH2_P33_8);
     encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
     pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
     pwm_init(ATOM0_CH1_P33_9, 50, 750);    //舵机
@@ -171,7 +140,7 @@ int core0_main (void)
 
             }
             err = ((lline + rline) - 187);
-            int delta = pid() + x1 * 100;
+            int delta = pid() + x1 * 55;
             if (delta > 150)
                 delta = 150;
             if (delta < -150)

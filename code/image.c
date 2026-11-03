@@ -18,6 +18,7 @@
 int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
 uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
+static int rowmap[256], colmap[256]; //预计算映射表
 
 uint8 last_image_exist = 0;
 float now_zhi_xin_du = 0;
@@ -79,6 +80,7 @@ uint8 kuai_kuan[188]; // 像素点左边第一个分块的列索引
 uint8 kuai_gao[120];
 void image_init (void)
 {
+
     for (int i = 0; i < MT9V03X_H; i++)
     {
         int k = i;
@@ -617,7 +619,7 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 #define MIN_BOX_HEIGHT 10
 #define ZUI_XIAO_LU_KOU_KUAN_DU 65
 #define MAX_HEIGHT 80//仅仅用于计算box的最大可出现像素
-uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
+uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[MAX_BOX][4][2])
 { //返回框的数量，但是找到路口返回255
     uint8 s[MAXSECTIONS][2] = {{0}};
     uint8 tmp = 0;
@@ -653,20 +655,20 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[][4][2])
             {
                 flag = 1;
                 box[tmp][0][0] = s[0][0]; //0->x,1->y
-                box[tmp][0][1] = (uint8)i;
+                box[tmp][0][1] = (uint8) i;
                 box[tmp][1][0] = s[sum - 1][1];
-                box[tmp][1][1] = (uint8)i;
-                box[tmp][2][1] = (uint8)i;
+                box[tmp][1][1] = (uint8) i;
+                box[tmp][2][1] = (uint8) i;
                 box[tmp][2][0] = s[0][0];
-                box[tmp][3][1] = (uint8)i;
+                box[tmp][3][1] = (uint8) i;
                 box[tmp][3][0] = s[sum - 1][1];
             }
             else
             {
                 box[tmp][2][0] = min(box[tmp][2][0], s[0][0]); //0->x,1->y
-                box[tmp][2][1] = (uint8)i;
+                box[tmp][2][1] = (uint8) i;
                 box[tmp][3][0] = max(box[tmp][3][0], s[sum - 1][1]);
-                box[tmp][3][1] = (uint8)i;
+                box[tmp][3][1] = (uint8) i;
             }
             //image_read
         }
@@ -725,53 +727,106 @@ int32_t read_ele (uint8_t image[18][18])
 }
 
 uint16_t g[18][18];
-int box[MAX_BOX][4][2];
-#define MIN_AREA_AVR_LEN 24
-uint8 image_read (uint8_t image[][MT9V03X_W],uint8_t result[])//返回box个数，result是类别
+uint8 box[MAX_BOX][4][2];
+#define MIN_AREA_AVR_LEN 16//面积平均算法的最小面积
+#define AREA_MIN_LEN    8//最小处理长度
+//#define AREA_PAD_X100     135          // 1.35
+//#define AREA_VAL_SCALE  255
+
+uint8 image_read (uint8_t image[][MT9V03X_W], uint8_t result[]) //返回box个数，result是类别
 {
     memset(box, 0, sizeof(box));
-    int k =(int) find_boxes(image, box);
-    if (k == 255){
-        result[0]=255;
-        return 0;
+    int k = (int) find_boxes(image, box);
+    if (k == 255)
+    {
+        result[0] = 255;
+        return 255;
     }
-
-    uint8_t cnt[18][18]; //处理后的数组
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        for (int j = 0; j < MT9V03X_W; j++)
+        {
+            if (image[i][j])
+                image[i][j] = 255;
+        }
+    }
+    uint16_t cnt[18][18]; //累加计数
+    uint8_t tmp[18][18]; //临时存储
     uint32 kind = 0;
-    for (int i = 0; i < k; i++)
+    for (int t = 0; t < k; t++)
     {
         memset(g, 0, sizeof(g));
         memset(cnt, 0, sizeof(cnt));
-        int box_left = box[i][0][0], box_right = box[i][1][0] + 1, box_top = box[i][2][1], box_bottom = box[i][0][1]
+        memset(tmp, 0, sizeof(tmp));
+        int box_left = box[t][2][0], box_right = box[t][3][0] + 1, box_top = box[t][2][1], box_bottom = box[t][0][1]
                 + 1;
         int box_center_x = (box_left + box_right) >> 1, box_center_y = (box_top + box_bottom) >> 1;
-        if (min(box_right-box_left,box_bottom-box_top) >= MIN_AREA_AVR_LEN)
+        int sqr_len = max(box_right - box_left, box_bottom - box_top);
+        int left = box_center_x - (sqr_len >> 1), right = box_center_x + (sqr_len >> 1), top = box_center_y
+                - (sqr_len >> 1), bottom = box_center_y + (sqr_len >> 1); //窗口
+        for (int i = 0; i < sqr_len; i++)
         {
-            int sqr_len = max(box_right - box_left, box_bottom - box_top);
+            rowmap[i] = i * 16 / sqr_len;
+            colmap[i] = i * 16 / sqr_len;
+        }
+        int win_left = box_center_x - (sqr_len >> 1), win_top = box_center_y - (sqr_len >> 1);
+        int x_bias = (box_left - win_left) * 16 / sqr_len, y_bias = (box_top - win_top) * 16 / sqr_len;
+
+        if (max(box_right-box_left,box_bottom-box_top) >= MIN_AREA_AVR_LEN)
+        {
+
+            //if (sqr_len < AREA_MIN_WIN_W) sqr_len = AREA_MIN_WIN_W;
+            //int per_area = sqr_len * sqr_len;
             for (int l = 0; l < sqr_len; l++)
             {
                 for (int j = 0; j < sqr_len; j++)
                 {
                     int x = box_center_x - (sqr_len >> 1) + l, y = box_center_y - (sqr_len >> 1) + j;
-                    int xs = (x - box_left) * 18 / sqr_len, ys = (y - box_top) * 18 / sqr_len;
+                    if (x < box_left || x >= box_right || y < box_top || y >= box_bottom)
+                        continue;
+                    if (x < 0 || x >= MT9V03X_W || y < 0 || y >= MT9V03X_H)
+                        continue;
+                    int xs = (x - box_left) * 16 / sqr_len + x_bias, ys = (y - box_top) * 16 / sqr_len + y_bias;
                     //int xe = xs + 1, ye = ys + 1;
-                    if (x >= box_left && x < box_right && y < box_bottom && y >= box_top)
-                    {
-                        g[ys][xs] += image[y][x];
-                        cnt[ys][xs]++;
-                    }
+
+                    g[ys][xs] += image[y][x];
+                    cnt[ys][xs]++;
+
                 }
             }
-            for(int m=0;m<18;m++){
-                for(int n=0;n<18;n++){
-                    if(cnt[m][n]==0)g[m][n]=0;
-                    else g[m][n]=g[m][n]/cnt[m][n];
+            for (int m = 0; m < 16; m++)
+            {
+                for (int n = 0; n < 16; n++)
+                {
+                    if (cnt[m][n] != 0)
+                        tmp[m + 1][n + 1] = (uint8) ((uint16) (g[m][n]) / cnt[m][n]);
+                    //else tmp[m][n]=1;
                 }
             }
-            kind = (int)read_ele(g);
+            kind = (int) read_ele(tmp);
         }
-        else kind = 0;
-        result[i]=kind;
+        else if (max(box_right - box_left, box_bottom - box_top) > AREA_MIN_LEN)
+        {
+            int gw = (box_right - box_left - 1) * 16 / sqr_len + 1;            //缩放后的宽和高
+            int gh = (box_bottom - box_top - 1) * 16 / sqr_len + 1;            //防止越界
+            win_left = box_center_x - 8, win_top = box_center_y - 8;
+            for (int m = 0; m < 16; m++)
+            {
+                for (int n = 0; n < 16; n++)
+                {
+                    int xs = box_left + (2 * n + 1) * (box_right - box_left) / (2 * gw);
+                    int ys = box_top + (2 * m + 1) * (box_bottom - box_top) / (2 * gh);
+                    tmp[m + 1][n + 1] = image[ys][xs];
+                }
+            }
+
+            kind = (int) read_ele(tmp);
+
+        }
+        else
+            kind = 0;
+        result[t] = kind;
     }
     return k;
 }
+

@@ -8,22 +8,63 @@
 
 //#define START_SPEED_ADD 1
 
+void stop (void)
+{
+    pwm_set_duty(ATOM0_CH4_P02_4, 0);
+    pwm_set_duty(ATOM0_CH1_P33_9, 750);
+    pid_reset();
 
+}
+volatile int16 err=0;
+int16 P, I, D,  last_err, last_last_err;
+void pid_reset (void)
+{
+    I = 0;
+    last_err = 0;
+    last_last_err = 0;
+}
+int16 pid (void)
+{
+    int16 output;
+    float kp = 1, ki = 0.2, kd = 0.6;
+    if (abs(err) < 100)
+    {          // ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        I += err;
+        I = min(I, 40);
+        I = max(I, -40);
+    }
+    P = err;
+    //I += err;
+    D = (err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU);
+    P = min(P, 80);
+    P = max(P, -80);
+    I = min(I, 40);
+    I = max(I, -40);
+    D = min(D, 50);
+    D = max(D, -50);
+    output = kp * P + ki * I + kd * D;
+    last_last_err = last_err;
+    last_err = err;
 
-void control(uint32 tick,int16 delta,int speed){
+    return output;
+}
+void control (uint32 tick, int16 delta, int speed)
+{
 
-    if(tick<START_TIME){
-        //Õ¼¿Õ±ÈÖð½¥Ôö´ó
-        uint32 now_max_speed=(uint32)min(speed,(uint64)(tick*(uint64_t)speed/START_TIME));//ËÙ¶ÈµÝÔö
+    if (tick < START_TIME)
+    {
+        //Õ¼ï¿½Õ±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+        uint32 now_max_speed = (uint32) min(speed, (uint64)(tick*(uint64_t)speed/START_TIME));          //ï¿½Ù¶Èµï¿½ï¿½ï¿½
         pwm_set_duty(ATOM0_CH4_P02_4, now_max_speed);
     }
-    else{
+    else
+    {
         pwm_set_duty(ATOM0_CH4_P02_4, speed);
     }
-    pwm_set_duty(ATOM0_CH1_P33_9, min(max(750 + delta,400),1100));   // Ò»¸ö·½Ïò
+    pwm_set_duty(ATOM0_CH1_P33_9, min(max(750 + delta,400), 1100));   // Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 }
-// PID²ÎÊýÉèÖÃ£¬Ìá¸ßPÖµÄÜ¹»Ê¹·´Ó¦¸ü¿ì£¬µ«¿ÉÄÜ»á¹ý³å£¬ÉèÖÃiÖµ£¬ÄÜ¹»ÈÃÕûÌå¹ì¼£¸ü½Ó½üÄ¿±êÖµ£¬dÖµÄÜ¹»¼õÐ¡¹ý³å£¨Õñµ´£©¡£
-// µ÷½ÚË³ÐòÏÈkpºókiÔÙkd£¬ÕâÀï×Ô¼ºÊÔÒ»ÏÂ£¬ÕâÀïÎÒÖ»Ê¹ÓÃ´¿Pµ÷½Ú
-// Iµ÷½ÚÊÇÓÐ×÷ÓÃµÄ£¬µ«ÊÇ²»ÒªÌ«´ó
-//(ÓÉÓÚÊÇÎó²îÊÇÀëÉ¢µÄ£¬²»Á¬ÐøµÄ£¬ÕâÀïµÄD£¬Ö»ÔÚÊýÖµÍ»±äµÄÒ»¿Ì£¬D²ÅÆðµ÷½Ú×÷ÓÃ£¬¾ßÌåÓÐÃ»ÓÐÓÃ£¬Àí½â´úÂë£¬×Ô¼ºÊÔÒ»ÏÂ)
+// PIDï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½PÖµï¿½Ü¹ï¿½Ê¹ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ì£¬ï¿½ï¿½ï¿½ï¿½ï¿½Ü»ï¿½ï¿½ï¿½å£¬ï¿½ï¿½ï¿½ï¿½iÖµï¿½ï¿½ï¿½Ü¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ì¼£ï¿½ï¿½ï¿½Ó½ï¿½Ä¿ï¿½ï¿½Öµï¿½ï¿½dÖµï¿½Ü¹ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½å£¨ï¿½ñµ´£ï¿½ï¿½ï¿½
+// ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½ï¿½ï¿½kpï¿½ï¿½kiï¿½ï¿½kdï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½Ò»ï¿½Â£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö»Ê¹ï¿½Ã´ï¿½Pï¿½ï¿½ï¿½ï¿½
+// Iï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÃµÄ£ï¿½ï¿½ï¿½ï¿½Ç²ï¿½ÒªÌ«ï¿½ï¿½
+//(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½É¢ï¿½Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Dï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ÖµÍ»ï¿½ï¿½ï¿½Ò»ï¿½Ì£ï¿½Dï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£¬ï¿½Ô¼ï¿½ï¿½ï¿½Ò»ï¿½ï¿½)
 
