@@ -120,7 +120,7 @@ void image_init (void)
     }
 }
 //uint8 kuai_zuo_biao[MT9V03X_H][MT9V03X_W];
-void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
+/*void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
 {
     if (i <= 20)
         i = 20;
@@ -130,15 +130,15 @@ void cha_zhi_update (int i, int j) //0 ↖ 1 ↗ 2↙ 3 ↘
         j = 24;
     else if (j >= 164)
         j = 164; //使用最外围的点求值
-    /*
+
      for (int k = 0; k < 4; k++)
      cha_zhi[k].n = 0;
      cha_zhi[0].n = (256 - wy[i].n) * (256 - wx[j].n);            //放大65536倍
      cha_zhi[1].n = (256 - wy[i].n) * (wx[j].n);
      cha_zhi[2].n = wy[i].n * (256 - wx[j].n);
      cha_zhi[3].n = wx[j].n * wy[i].n;
-     */
-}
+
+}*/
 static inline uint8 to_uint8 (int32 tmp)
 {
     return (uint8) (max(min(tmp,255), 0));
@@ -299,7 +299,7 @@ void double_value (uint8_t image[][MT9V03X_W])
                 row_down = row_up + 1;
                 col_left = kuai_kuan[j];
                 col_right = col_left + 1;
-                cha_zhi_update(k, l);
+               // cha_zhi_update(k, l);
                 const int32_t A = fen_kuai_bu_chang[row_up][col_left];
                 const int32_t B = fen_kuai_bu_chang[row_down][col_left];
                 const int32_t C = fen_kuai_bu_chang[row_up][col_right];
@@ -401,7 +401,7 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
             if (image[i][j] == 255) //只处理白线
             {
                 int size = 0;
-                push(i * MT9V03X_W + j);
+                push((i<<8) + j);//位压
                 image[i][j] = 1;
                 while (!empty())
                 {
@@ -412,7 +412,7 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                     for (int k = 0; k < 9; k++)
                     {
 
-                        int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
+                        int hang = (tmp >>8) + s1[k], lie = (tmp&0xFF)+ s2[k];
                         if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
                         {
                             continue;
@@ -420,14 +420,14 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                         if (image[hang][lie] == 255)
                         {
                             image[hang][lie] = 1;
-                            push(hang * MT9V03X_W + lie);
+                            push((hang<<8) + lie);
                         }
                     }
                 }
                 if (size < 60)
                 {
                     //删除
-                    push(i * MT9V03X_W + j);
+                    push((i<<8) + j);
                     image[i][j] = 0;
                     while (!empty())
                     {
@@ -437,15 +437,14 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
                         for (int k = 0; k < 9; k++)
                         {
 
-                            int hang = tmp / MT9V03X_W + s1[k], lie = tmp - tmp / MT9V03X_W * MT9V03X_W + s2[k];
-
+                            int hang = (tmp >>8) + s1[k], lie =( tmp &0xff)+ s2[k];
                             if (hang < 0 || lie < 0 || hang >= MT9V03X_H || lie >= MT9V03X_W)
                             {
                                 continue;
                             }
                             if (image[hang][lie] == 1)
                             {
-                                push(hang * MT9V03X_W + lie);
+                                push((hang<<8) + lie);
                                 image[hang][lie] = 0; //清0
                             }
 
@@ -529,7 +528,7 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
             if (i == MT9V03X_W - 1)
             {
                 s[sum][1] = i;
-                if(flag==1)sum++;
+                sum++;
             }
         }
         else
