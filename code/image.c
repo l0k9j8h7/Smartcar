@@ -505,7 +505,7 @@ int32 find_line (uint8_t image[][MT9V03X_W], int height)
     if (lline == -1)
         lline = max(rline-LINEWIDTH, 0);
     if (rline == -1)
-        rline = min(lline-LINEWIDTH, 187);
+        rline = min(lline+LINEWIDTH, 187);
     return (lline << 8) + rline; //返回左右的值
 
 }
@@ -513,10 +513,11 @@ int32 find_line (uint8_t image[][MT9V03X_W], int height)
 #define MAXSECTIONS 8
 int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
 { //0->l 1->r,返回段的个数
-    int sum = 0;
+    int8 sum = 0;
     uint8 flag = 0;
     for (int i = 0; i < MT9V03X_W; i++)
     {
+        if(sum>=MAXSECTIONS)return 0;
         if (p[h][i])
         {
             if (flag == 0)
@@ -528,6 +529,7 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
             if (i == MT9V03X_W - 1)
             {
                 s[sum][1] = i;
+                if(flag==1)sum++;
             }
         }
         else
@@ -547,7 +549,7 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
             }
         }
     }
-    return sum > MAXSECTIONS ? 0 : sum;
+    return sum;
 }
 #define ZUI_DA_GAO_DU 50//仅仅用于计算斜率
 #define YUN_XV_SHI_BAI_CI_SHU 5

@@ -64,7 +64,7 @@
 extern volatile uint8 copy_flag;
 extern uint8_t copy[MT9V03X_H][MT9V03X_W];
 extern  volatile uint8 busy;
-
+int64 last_frame=0;//记录上一帧的时间
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU0的RAM中
 
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
@@ -110,6 +110,7 @@ int core0_main (void)
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
             copy_flag++;
+            last_frame=system_getval();
             while (copy_flag >= ZU_SE_ZHEN_SHU&&!busy)
             {
                 //wait
@@ -127,6 +128,11 @@ int core0_main (void)
             while (x == -1)
             {
                 tmp--;
+                if(tmp<=100){
+                    //找线找不到
+                    x=-1;
+                    break;
+                }
                 x = find_line(image_copy, tmp);
             }
             float x1 = qing_xie_du(x, image_copy);
@@ -138,6 +144,11 @@ int core0_main (void)
                 pid_reset();
                 continue;
 
+            }if(system_getval()-last_frame>50000000){
+                //处理时间超过0.5s
+                control(ticks, 0, MAX_SPEED / 10);
+                pid_reset();
+                continue;
             }
             err = ((lline + rline) - 187);
             int delta = pid() + x1 * 55;
