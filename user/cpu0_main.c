@@ -87,6 +87,21 @@ int core0_main (void)
     encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
     pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
     pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    //舵机
+
+    /* ---------------- 差速转弯所需外设（turn 函数用） ----------------
+     * ★ 下面两组引脚和定时器是按「C 车模常见布局」写的默认值，上电前务必与实车接线核对：
+     *   ① 若右电机不是接 P02_5，改 TURN_PWM_YOU（tiaocan.h 6.1 节）同时改这里的引脚；
+     *   ② 若右轮编码器不是 TIM4 的 P02_8/P33_5，改 TURN_ENCODER_YOU 并同步改这里；
+     *   ③ 左右轮装反了，现象是 turn() 往反方向转、或外轮反而更慢 —— 直接对调两个编码器/两路 PWM。
+     * 频率与左电机保持一致（17 kHz），否则左右轮低速响应不同，差速环会一直修。 */
+    pwm_init(TURN_PWM_YOU, 17000, 0);                                        // 右电机 PWM
+    encoder_quad_init(TURN_ENCODER_YOU,
+                      TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P33_5);       // 右轮编码器
+
+    /* 上电把两路电机都清零：pwm_init 的初值虽然是 0，但从复位到这里的空窗期里
+     * 电机驱动可能被拉高，明确清一次更稳妥 */
+    pwm_set_duty(TURN_PWM_ZUO, 0);
+    pwm_set_duty(TURN_PWM_YOU, 0);
     gpio_init(P33_1, GPO, 1, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(&camera_obj, SEEKFREE_ASSISTANT_CAMERA_TYPE_MT9V03X,
@@ -100,6 +115,17 @@ int core0_main (void)
     mt9v03x_set_exposure_time(100);             // 初始化时设一次就够了，不要放进主循环
     image_init();
     cpu_wait_event_ready();         // 等待所有核心初始化完毕
+
+#if TURN_TAI_JIAN_CE_SHI
+    /* 台架自检：只在 TURN_TAI_JIAN_CE_SHI = 1 时编译进来，跑一次 turn(90) 就死循环，
+     * 方便把车架起来看左右轮转向和速比。正式跑车必须改回 0。 */
+    turn(90);
+    while (TRUE)
+    {
+        /* 停在这里，用调试器看 turn_lei_ji_chong / turn_shi_ji_ban_jing / turn_jie_guo */
+    }
+#endif
+
     uint32 start_ticks = system_getval();       // ← 发车那一刻打时间戳
     uint8 if_go = 0;       //是否发车
     last_frame = start_ticks;   // last_frame 为最近一帧时间戳，初始化成发车时刻供断流保护使用

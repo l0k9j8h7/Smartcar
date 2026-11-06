@@ -63,4 +63,56 @@
 #define MIN_AREA_AVR_LEN 16         // 面积平均算法的最小面积
 #define AREA_MIN_LEN 8              // 面积算法的最小处理长度
 
+
+/* ========== 六、编码器差速转弯（turn 函数，2026-11-06） ========== */
+/* 思路：前轮舵机定圆心 + 后轮左右电机差速补半径。
+ * 标定拆成四个能直接量的长度/计数，先量再跑，别用拍的数。 */
+
+/* --- 6.1 硬件 --- */
+#define TURN_PWM_ZUO            ATOM0_CH4_P02_4     // 左电机 PWM（cpu0_main 已初始化）
+#define TURN_PWM_YOU            ATOM0_CH5_P02_5     // 右电机 PWM（cpu0_main 已初始化，改引脚两处一起改）
+#define TURN_ENCODER_ZUO        TIM2_ENCODER        // 左轮编码器 TIM2: P33_7/P33_6（已在用）
+#define TURN_ENCODER_YOU        TIM4_ENCODER        // 右轮编码器 TIM4: P02_8/P33_5（cpu0_main 已初始化）
+#define TURN_FANG_XIANG         1                   // 转向极性：+1 = 正角度右转；实车相反改 -1
+#define TURN_STEER_DUTY         250                 // 舵机相对 SERVO_CENTER 的偏置，配合 TURN_ZUI_DA_ZHUAN_JIAO_DU 一起调
+
+/* --- 6.2 车体几何与编码器（★必须实测，尺子量、转一圈数） --- */
+#define TURN_AXIS_MM            200                 // 轴距：前轴到后轴，mm
+#define TURN_LUN_JU_MM          110                 // 轮距：左右后轮中心距，mm
+#define TURN_ZUI_DA_ZHUAN_JIAO_DU 28                // 前轮最大可用转角（度），决定最小半径 R = L/tan(d)
+#define TURN_LUN_ZHOU_MM        204                 // 轮周长 mm = π × 轮径；用卷尺绕轮胎一圈量最准
+#define TURN_MEI_LUN_QUAN_CHONG_MEI_DU 15360        // 每轮圈脉冲 = 编码器单圈计数 × 减速比；拿车推 10 圈数脉冲除以 10 最准
+
+/* --- 6.3 速度与限幅 --- */
+#define TURN_ZHUAN_SU_DU        700     // 外轮基准占空比（0~10000）
+#define TURN_NEI_LUN_ZUI_DI     120     // 内轮占空比下限，太小等于给内轮刹手刹
+#define TURN_ZUI_DA_ZHAN_KONG   2000    // 差速调节后的占空比上限，防 PI 跑飞
+/* 下面两个半径限幅【当前不生效】：半径由舵机角度决定（R = L/tan(d)），
+ * 强行钳位会让目标弧长和实际弧长对不上，出现"提前断电、转不够"。保留仅为调试时手动参考。 */
+#define TURN_BAN_JING_MIN       150     // 参考值：半径下限 mm，再小就打滑、磨胎（未参与运算）
+#define TURN_BAN_JING_MAX       400     // 参考值：半径上限 mm（未参与运算）
+#define TURN_TI_QIAN_JIAO_DU    3       // 提前断电量（度）。实测转不到位就减小，冲过头就加大
+#define TURN_ZUI_XIAO_JIAO_DU   1       // 小于此角度直接不动作（度）
+
+/* --- 6.4 差速闭环 --- */
+#define TURN_CE_SU_WIN_MS       30      // 差速检测窗口（ms），太小噪声大、太大响应慢
+#define TURN_DU_ZHUAN_ZHI       3       // 窗口内两轮平均脉冲低于此值判堵转
+#define TURN_CHA_PI_KP          3       // 弧度差环比例：每差 1 个「每度脉冲」给几档占空比
+#define TURN_CHA_PI_KI          1       // 弧度差环积分
+#define TURN_CHA_PI_JI_FEN_SHANG_XIAN 400   // 积分限幅（单位：每度脉冲）
+
+/* --- 6.5 时序与保护 --- */
+#define TURN_DA_DUO_MS          200     // 打舵后等前轮到位（ms）
+#define TURN_TING_CHE_MS        250     // 断电后等车身滑停（ms）
+#define TURN_HUA_XING_MS        0       // 到点后继续给电的时间（ms）。默认 0 = 立刻断电；
+                                        // 车轻、冲过头再试 80~200，车重、转不到位就保持 0
+#define TURN_CHAO_SHI_MS        8000    // 单次转弯总超时；上限 40000，再大会乘溢出
+#define TURN_BU_CHONG_SHANG_XIAN 2000   // 单次采样脉冲上限，超过视为野值丢弃
+#define TURN_TAI_JIAN_CE_SHI    0       // 1 = 上电自检跑一次 turn(90)，仅台架标定用
+
+/* 台架验收三步
+ * ① 两轮都悬空，turn(90)：左右轮都朝同一方向、外轮明显更快；看 turn_shi_ji_ban_jing 是否接近 L/tan(d)。
+ * ② 推车走直线 10 圈：编码器脉冲 / 10 = 每轮圈脉冲，填回 TURN_MEI_LUN_QUAN_CHONG_MEI_DU（左右轮分别量，取平均）。
+ * ③ 地面画圆跑 turn(90)，量实际角度 X：如果半径对但角度不对，改的是「每圈脉冲」；半径不对改 TURN_ZUI_DA_ZHUAN_JIAO_DU。 */
+
 #endif /* TIAOCAN_H */
