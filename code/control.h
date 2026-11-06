@@ -15,7 +15,9 @@ typedef enum
     TURN_DU_ZHUAN,                  // 编码器窗口内几乎不动：堵转 / 电机不转 / 编码器线松
 } turn_jie_guo_enum;
 
-int16 turn (int16 degrees);         // degrees: -180 ~ 180，正 = 右转，负 = 左转；阻塞执行
+int16 turn (int16 degrees);         // degrees: ±TURN_ZUI_DA_JIAO_DU（默认 ±360），正 = 右转，负 = 左转；阻塞执行
+                                    // 常用值：90 直角弯、120/135 大弯、180 掉头、300 绕行近一圈
+                                    // 越界会压到边界值执行；< TURN_ZUI_XIAO_JIAO_DU 直接返回 0 不动车
 
 extern volatile int32 turn_lei_ji_chong[2]; // [0]左轮 [1]右轮，本次累计脉冲
 extern volatile int16 turn_shi_ji_jiao_du;  // 按两轮平均里程反算的实际转角

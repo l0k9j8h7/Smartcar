@@ -82,6 +82,12 @@ void control (uint32 tick, int16 delta, int speed)
  * 闭环
  *   每 TURN_CE_SU_WIN_MS 比较一次左右轮实测弧度增量和期望值，PI 修正占空比差；
  *   丢线只看两轮平均里程，与串扰无关。单窗速率低于 TURN_DU_ZHUAN_ZHI 判堵转。
+ *
+ * 量程
+ *   |degrees| <= TURN_ZUI_DA_JIAO_DU（默认 360）。大角度就是沿同一半径多转一会儿：
+ *   目标弧长 = R * th(rad)，闭环按累计角度收口，120 / 300 度和 90 度走的是同一套逻辑。
+ *   唯一跟着变的是超时保护：大角度得给更多时间，否则会被 TURN_CHAO_SHI_MS 提前打断。
+ *   注意 300 度要绕出直径 2R 的圆（R=409 时约 0.8 m），场地先留出来。
  * =================================================================================================================== */
 
 volatile int32 turn_lei_ji_chong[2] = {0, 0};   // [0]左轮 [1]右轮，本次累计脉冲（绝对值累加）
@@ -139,6 +145,7 @@ int16 turn (int16 degrees)
     uint32 t_ce;
     uint32 t_now;
     uint32 dt;
+    uint32 chao_shi_ms;         // 本次超时门限（基准 + 每度余量 × 角度）
     uint8  i;
 
     turn_lei_ji_chong[0] = 0;
@@ -149,8 +156,10 @@ int16 turn (int16 degrees)
     cha_pi               = 0;
     cha_pi_jifen         = 0;
 
-    if (degrees >  180) degrees =  180;                  // 量程收口，越界也不至于失控
-    if (degrees < -180) degrees = -180;
+    /* 量程收口：默认 ±360（整圈），量程外的调用直接压到边界，不至于失控。
+     * 要把范围改大，只改 tiaocan.h 的 TURN_ZUI_DA_JIAO_DU，别在这里写死数字 */
+    if (degrees >  TURN_ZUI_DA_JIAO_DU) degrees =  (int16)TURN_ZUI_DA_JIAO_DU;
+    if (degrees < -TURN_ZUI_DA_JIAO_DU) degrees = -(int16)TURN_ZUI_DA_JIAO_DU;
     if (degrees <  TURN_ZUI_XIAO_JIAO_DU &&
         degrees > -TURN_ZUI_XIAO_JIAO_DU) return 0;
     if (TURN_MEI_LUN_QUAN_CHONG_MEI_DU <= 0)             // 没标定就别动
@@ -161,6 +170,11 @@ int16 turn (int16 degrees)
 
     jiao_du    = (degrees > 0) ?  degrees : (int16)(-degrees);
     fang_xiang = (degrees > 0) ?  TURN_FANG_XIANG : (int16)(-TURN_FANG_XIANG);
+
+    /* 超时按角度加：300 度走 2.1 m 弧长，固定 8 s 在慢车上会误判超时。
+     * 40×360 = 14400，uint32 乘不会溢出；但总时长要守在 42 s 内（时钟 32 位回绕） */
+    chao_shi_ms = (uint32)TURN_CHAO_SHI_MS
+                + (uint32)TURN_CHAO_SHI_MEI_DU_MS * (uint32)jiao_du;
 
     /* ---- 目标半径：受前轮可用转角限制，R = L / tan(d) ---- */
     jiao_du_shou = (jiao_du > TURN_ZUI_DA_ZHUAN_JIAO_DU) ? TURN_ZUI_DA_ZHUAN_JIAO_DU : jiao_du;
@@ -327,7 +341,7 @@ int16 turn (int16 degrees)
             t_ce      = t_now;
         }
 
-        if ((uint64)(t_now - t0) > (uint64)TURN_CHAO_SHI_MS * 100000ULL)
+        if ((uint64)(t_now - t0) > (uint64)chao_shi_ms * 100000ULL)
         {
             turn_jie_guo = TURN_CHAO_SHI;
             break;

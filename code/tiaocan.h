@@ -93,6 +93,10 @@
 #define TURN_BAN_JING_MAX       400     // 参考值：半径上限 mm（未参与运算）
 #define TURN_TI_QIAN_JIAO_DU    3       // 提前断电量（度）。实测转不到位就减小，冲过头就加大
 #define TURN_ZUI_XIAO_JIAO_DU   1       // 小于此角度直接不动作（度）
+/* 单次转角量程（度，取绝对值）。360 = 支持整圈，120/300 这类大角度直接 turn(120) / turn(300)。
+ * 想原地连转两圈就把这里改到 720；再大要注意 TURN_CHAO_SHI_MS 的总时长别超过 42 s
+ * （system_getval 是 32 位 10 ns 计数，约 42.9 s 就回绕一次）。 */
+#define TURN_ZUI_DA_JIAO_DU     360
 
 /* --- 6.4 差速闭环 --- */
 #define TURN_CE_SU_WIN_MS       30      // 差速检测窗口（ms），太小噪声大、太大响应慢
@@ -106,7 +110,10 @@
 #define TURN_TING_CHE_MS        250     // 断电后等车身滑停（ms）
 #define TURN_HUA_XING_MS        0       // 到点后继续给电的时间（ms）。默认 0 = 立刻断电；
                                         // 车轻、冲过头再试 80~200，车重、转不到位就保持 0
-#define TURN_CHAO_SHI_MS        8000    // 单次转弯总超时；上限 40000，再大会乘溢出
+#define TURN_CHAO_SHI_MS        8000    // 单次转弯基准超时 ms（打舵+起停+小角度足够）
+#define TURN_CHAO_SHI_MEI_DU_MS 40      // 每度追加的超时余量 ms。大角度按比例加：
+                                        // 实际超时 = TURN_CHAO_SHI_MS + 本宏 × 角度
+                                        // 300 度 -> 8 + 40×300/1000 = 20 s；总时长务必 < 42 s
 #define TURN_BU_CHONG_SHANG_XIAN 2000   // 单次采样脉冲上限，超过视为野值丢弃
 #define TURN_TAI_JIAN_CE_SHI    0       // 1 = 上电自检跑一次 turn(90)，仅台架标定用
 
