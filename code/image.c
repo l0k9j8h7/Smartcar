@@ -1,4 +1,5 @@
 #include<image.h>
+#include "tiaocan.h"    // 可调参数集中管理，调车只改这个文件
 #include<stdlib.h>
 #include"net_data.h"
 #include "zf_common_headfile.h"//头文件禁止引用头文件防止内存超限
@@ -144,6 +145,8 @@ static inline uint8 to_uint8 (int32 tmp)
     return (uint8) (max(min(tmp,255), 0));
 }
 int64 consist_fail = 0;
+uint8 image_valid = 1;          // 本帧二值化结果是否可信；0 表示白线已丢失，主循环应走丢线保护
+uint16 fail_recent = 0;         // 最近窗口内二值化失败累计：成功帧只衰减不清零，避免交替成败时永远进不了保护
 int16 fen_kuai_bu_chang[3][4] = {{0}};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {
@@ -368,14 +371,20 @@ void double_value (uint8_t image[][MT9V03X_W])
         memcpy(last_image_copy, image, MT9V03X_IMAGE_SIZE); // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
         last_image_exist = 1;
         consist_fail = 0;
+        if (fail_recent > 0)
+            fail_recent -= FAIL_RECENT_DECAY;                       // 成功帧只衰减不清零：这样「成功/失败交替」也能累计到保护阈值
+        image_valid = (fail_recent < FAIL_RECENT_LIMIT) ? 1 : 0;
 
     }
     else
     {
         consist_fail++;
-        if (last_image_exist == 1 && consist_fail <= 5)
+        if (fail_recent < FAIL_RECENT_MAX)
+            fail_recent += FAIL_RECENT_STEP;                   // 失败权重为成功的 2 倍，让不稳定二值化尽快进保护
+        if (last_image_exist == 1 && consist_fail <= CONSIST_FAIL_MAX)
         {
             memcpy(image, last_image_copy, MT9V03X_IMAGE_SIZE);
+            image_valid = (fail_recent < FAIL_RECENT_LIMIT) ? 1 : 0;   // 短期回退旧图仍可用，但失败过密就不再信任
         }
         else
         {
@@ -388,6 +397,7 @@ void double_value (uint8_t image[][MT9V03X_W])
 
                 }
             }
+            image_valid = 0;                    // 连续失败 ≥6 帧改用硬阈值，白线基本全丢，明确判不可信
         }
     }
 }
@@ -459,8 +469,9 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
     }
 
 }
-#define LINEWIDTH 7
-#define YOUXIAOXIANKUAN 5
+int16 last_l_line = -1;          // 上一帧有效左边线列，用于单边线时判断这条线属于哪一侧
+int16 last_r_line = -1;          // 上一帧有效右边线列，用于单边线时判断这条线属于哪一侧
+int16 last_lr_width = -1;        // 上一帧有效赛道宽度（右-左），-1 表示尚无历史，此时不猜边线
 int32 find_line (uint8_t image[][MT9V03X_W], int height)
 { //返回方向值(delta1)
     int sum1 = 0, sum2 = 0, max1 = 0, max2 = 0;
@@ -505,18 +516,47 @@ int32 find_line (uint8_t image[][MT9V03X_W], int height)
         lline = max(rline-LINEWIDTH, 0);
     if (rline == -1)
         rline = min(lline+LINEWIDTH, 187);
+
+    // 单边线时补出的「另一边」其实是同一条白线的两端，(l+r) 会被当成赛道中点两倍而放大成满舵（N-1）
+    if (rline - lline < MIN_TRACK_WIDTH)
+    {
+        if (last_lr_width <= 0)
+            return -1;                  // 没有历史赛道信息就不猜，交给主循环走丢线保护
+        int center = (lline + rline) >> 1;
+        if (abs(center - last_r_line) <= abs(center - last_l_line))
+        {
+            // 当前线更像上一帧的右边线：左边线在其左侧，宽度沿用上一帧
+            rline = center;
+            lline = center - last_lr_width;
+        }
+        else
+        {
+            // 当前线更像上一帧的左边线：右边线在其右侧
+            lline = center;
+            rline = center + last_lr_width;
+        }
+        lline = max(lline, 0);
+        lline = min(lline, MT9V03X_W - 1);
+        rline = max(rline, 0);
+        rline = min(rline, MT9V03X_W - 1);
+    }
+    else if (height == MT9V03X_H - 1)
+    {
+        // 只在底行、双边线有效时刷新记忆，避免上溯行把历史宽度污染成窄线
+        last_l_line = lline;
+        last_r_line = rline;
+        last_lr_width = rline - lline;
+    }
     return (lline << 8) + rline; //返回左右的值
 
 }
-#define SECTIONWIDTH 5
-#define MAXSECTIONS 8
 int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
 { //0->l 1->r,返回段的个数
     int8 sum = 0;
     uint8 flag = 0;
     for (int i = 0; i < MT9V03X_W; i++)
     {
-        if(sum>=MAXSECTIONS)return 0;
+        if(sum>=MAXSECTIONS)return MAXSECTIONS;   // 饱和时返回上限而非 0：find_boxes 不会再 continue 丢掉路口关键行
         if (p[h][i])
         {
             if (flag == 0)
@@ -550,9 +590,6 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
     }
     return sum;
 }
-#define ZUI_DA_GAO_DU 50//仅仅用于计算斜率
-#define YUN_XV_SHI_BAI_CI_SHU 5
-#define MAX_LINE_WIDTH 80
 
 float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 {
@@ -615,11 +652,6 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         return -65535;
     return (((float) (yuanzuo - lline) / (MT9V03X_H - 1 - lh)) + ((float) (yuanyou - rline) / (MT9V03X_H - 1 - rh))) / 2;
 }
-#define MAX_BIAS 50
-#define MAX_BOX 5
-#define MIN_BOX_HEIGHT 10
-#define ZUI_XIAO_LU_KOU_KUAN_DU 65
-#define MAX_HEIGHT 80//仅仅用于计算box的最大可出现像素
 uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[MAX_BOX][4][2])
 { //返回框的数量，但是找到路口返回255
     uint8 s[MAXSECTIONS][2] = {{0}};
@@ -729,8 +761,6 @@ int32_t read_ele (uint8_t image[18][18])
 
 uint16_t g[18][18];
 uint8 box[MAX_BOX][4][2];
-#define MIN_AREA_AVR_LEN 16//面积平均算法的最小面积
-#define AREA_MIN_LEN    8//最小处理长度
 //#define AREA_PAD_X100     135          // 1.35
 //#define AREA_VAL_SCALE  255
 

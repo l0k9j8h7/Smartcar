@@ -1,8 +1,7 @@
+#include "tiaocan.h"                // 可调参数集中到 tiaocan.h，调车只改那一个文件
+
 void control(uint32 tick,int16 delta,int speed);
 
-#define  ZU_SE_ZHEN_SHU 250
 void pid_reset (void);
 int16 pid(void);
 void stop(void);
-#define START_TIME 30000000//0.3s
-#define DI_TONG_ZHI_HOU 0.55//0-1

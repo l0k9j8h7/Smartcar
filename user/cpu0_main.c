@@ -57,6 +57,7 @@
 #pragma section all "cpu0_dsram"
 #include"control.h"
 #include"image.h"
+#include"tiaocan.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -72,7 +73,6 @@ int64 last_frame=0;//记录上一帧的时间
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
-#define MAX_SPEED 1000//0-10000限幅
 extern volatile int16 err;
 uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
 // **************************** 代码区域 ****************************
@@ -86,7 +86,7 @@ int core0_main (void)
     //encoder_quad_init(TIM4_ENCODER,TIM4_ENCODER_CH1_P33_9, TIM4_ENCODER_CH2_P33_8);
     encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
     pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
-    pwm_init(ATOM0_CH1_P33_9, 50, 750);    //舵机
+    pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    //舵机
     gpio_init(P33_1, GPO, 1, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(&camera_obj, SEEKFREE_ASSISTANT_CAMERA_TYPE_MT9V03X,
@@ -102,33 +102,55 @@ int core0_main (void)
     cpu_wait_event_ready();         // 等待所有核心初始化完毕
     uint32 start_ticks = system_getval();       // ← 发车那一刻打时间戳
     uint8 if_go = 0;       //是否发车
+    last_frame = start_ticks;   // last_frame 为最近一帧时间戳，初始化成发车时刻供断流保护使用
     while (TRUE)       //需要添加帧同步信号防止撕裂
     {
+        uint32 now_ticks = system_getval();     // 本轮时间戳：帧间隔与断流判断共用一个时刻，避免重复取时钟
+        uint32 ticks = now_ticks - start_ticks; //计算t
+        if (ticks > START_TIME)
+            if_go = 1;   //已经出发
+        if (if_go)
+            ticks = START_TIME + 1;
+
+        // 摄像头断流保护：放在帧分支外，0.5 s 无新帧时也能持续回中降速（原写法在 continue 之后，是死代码）
+        if ((int64)now_ticks - last_frame > WU_ZHEN_CHAO_SHI)
+        {
+            control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
+            pid_reset();
+        }
+
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
             //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
             copy_flag++;
-            last_frame=system_getval();
-            while (copy_flag >= ZU_SE_ZHEN_SHU&&!busy)
+            last_frame = now_ticks;
+
+            // 图传忙等加超时：CPU1 卡在串口不置 busy 时不再永久阻塞 CPU0
+            uint32 wait_start = system_getval();    // 忙等计时起点，单位 10 ns
+            while (copy_flag >= ZU_SE_ZHEN_SHU && !busy
+                    && (system_getval() - wait_start) < TU_CHUAN_CHAO_SHI)
             {
-                //wait
+                //wait（最多 50 ms）
             }
-            uint32 ticks = system_getval() - start_ticks;   //计算t
-            if (ticks > START_TIME)
-                if_go = 1;   //已经出发
-            if (if_go)
-                ticks = START_TIME + 1;
+            if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
+                copy_flag = 0;   // 超时兜底：放弃本帧图传，避免下一帧重复等待
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
+            if (!image_valid)                   // 二值化已判不可信（连续失败/硬阈值回退），白线大概率已丢，不再拿它算 err
+            {
+                control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
+                pid_reset();
+                continue;
+            }
             xiao_qu_yu_shan_chu(image_copy);
             int tmp = MT9V03X_H - 1;
             int32 x = find_line(image_copy, MT9V03X_H - 1);
             while (x == -1)
             {
                 tmp--;
-                if(tmp<=100){
+                if(tmp<=FIND_LINE_MIN_ROW){   // 下界由 100 改为 10：原来只回溯 19 行，弯道出口会误判丢线
                     //找线找不到
                     x=-1;
                     break;
@@ -138,23 +160,17 @@ int core0_main (void)
             float x1 = qing_xie_du(x, image_copy);
             int lline = (x >> 8) & 0xFF; /* 左边界列 0~187 */
             int rline = x & 0xFF; /* 右边界列 0~187 */
-            if (x < 0 || x1 < -100 || x1 > 100 || lline < 10 || rline > 178)
+            if (x < 0 || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX)
             {
-                control(ticks, 0, MAX_SPEED / 10);   // 丢线时舵机回中并降速
-                pid_reset();
-                continue;
-
-            }if(system_getval()-last_frame>50000000){
-                //处理时间超过0.5s
-                control(ticks, 0, MAX_SPEED / 10);
+                control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);   // 丢线时舵机回中并降速
                 pid_reset();
                 continue;
             }
-            err = ((lline + rline) - 187);
-            int delta = pid() + x1 * 55;
-            if (delta > 150)
+            err = ((lline + rline) - IMAGE_CENTER);
+            int delta = pid() + x1 * SLOPE_WEIGHT;
+            if (delta > DELTA_LIMIT)
                 delta = 150;
-            if (delta < -150)
+            if (delta < -DELTA_LIMIT)
                 delta = -150;
             control(ticks, (int16) (delta), MAX_SPEED);
         }

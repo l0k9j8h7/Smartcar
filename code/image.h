@@ -1,6 +1,7 @@
 #include "zf_common_headfile.h"
 
 extern uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
+extern uint8 image_valid;   // 本帧二值化结果是否可信，由 double_value() 更新，主循环据此判丢线
 
 void double_value (uint8_t image[][MT9V03X_W]);
 void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W]);
