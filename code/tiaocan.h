@@ -54,7 +54,7 @@
 #define MAXSECTIONS 32              // 一行白段上限，188/(5+1) 约 31，取 32
 #define ZUI_DA_GAO_DU 50            // 计算斜率时向上爬的最大行数
 #define YUN_XV_SHI_BAI_CI_SHU 5     // 爬线允许的失败次数
-#define MAX_LINE_WIDTH 80           // 斜率爬线的赛道最大宽度，超过直接判丢线
+#define MAX_LINE_WIDTH 120         // 斜率爬线赛道最大宽度；报告 P1-2 建议 160，构造图像实测低对比噪声假线宽 159，取 120 兼顾宽赛道与噪声兜底
 #define MAX_BIAS 50                 // 框识别允许的最大偏移
 #define MAX_BOX 5                   // 最多识别的框数量
 #define MIN_BOX_HEIGHT 10           // 框的最小高度

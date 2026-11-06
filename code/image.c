@@ -16,23 +16,24 @@
 #define da_yu(a,b) ((a) > (b) ? 1 : 0)
 #define xiao_yu(a,b) ((a) < (b) ? 1 : 0)
 //·Ö³É6*4¸öÐ¡·½¿é
-int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+// ÁÚÓò±íÈ«ÎÄ¼þÖ»¶Á£¨ÎÞÐ´Èë¡¢ÎÞÍâ²¿ÒýÓÃ£©£¬ÉùÃ÷Îª static const ÈÃ±àÒëÆ÷°Ñ 9 ´Î
+// Ñ­»·ÀïµÄ s1[k]/s2[k] ³£Á¿ÕÛµþ³É¹Ì¶¨Æ«ÒÆ£¬»Ý¼° 9 ÁÚÓòÈ¥ÔëÓëÁ½´¦ BFS ÈÈÑ­»·
+static const int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+static const int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
 uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
 static int rowmap[256], colmap[256]; //Ô¤¼ÆËãÓ³Éä±í
 
 uint8 last_image_exist = 0;
 float now_zhi_xin_du = 0;
 float zhi_xin_du = 0.6;
-int16 row_up, row_down, col_left, col_right;
 typedef struct
 {
-    int32 n;
+    int16 n;   // ¶©Õý±¨¸æ P2-2£ºimage_init Êµ²âÖµÓò 0~252£¬int8 »áÒç³ö£¬¹ÊÊÕÕ­Îª int16 ¶ø·Ç int8
 } ding_bi_shu_256;
 struct dui
 {
-    uint64 head;
-    uint64 tail;
+    uint16 head;   // ¶ÓÁÐË÷ÒýÖ»µ½ 1023£¬Ô­ uint64 ÈÃÈÈÂ·¾¶×ö 64 Î»×ÔÔö£¨±¨¸æ P2-3£©
+    uint16 tail;
     uint16 queue[1024]; //±ß½ç
     uint16 len;
 } q = {0}; //¶¨Òå1024³¤¶È¶ÓÁÐ
@@ -149,35 +150,38 @@ uint8 image_valid = 1;          // ±¾Ö¡¶þÖµ»¯½á¹ûÊÇ·ñ¿ÉÐÅ£»0 ±íÊ¾°×ÏßÒÑ¶ªÊ§£¬Ö÷Ñ
 uint16 fail_recent = 0;         // ×î½ü´°¿ÚÄÚ¶þÖµ»¯Ê§°ÜÀÛ¼Æ£º³É¹¦Ö¡Ö»Ë¥¼õ²»ÇåÁã£¬±ÜÃâ½»Ìæ³É°ÜÊ±ÓÀÔ¶½ø²»ÁË±£»¤
 int16 fen_kuai_bu_chang[3][4] = {{0}};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
-{
+{   //´ó½ò·¨£ºÔ­ÊµÏÖÃ¿¸öãÐÖµ¶¼´ÓÍ·ÀÛ¼ÓÖ±·½Í¼£¬ÊÇ O(256^2)£»¸ÄÎª¹ö¶¯Ç°×ººÍ O(256)£¨±¨¸æ P1-5£©
     int16 best_value = -1;
     float fangcha = 0;
-    //´ó½ò·¨
-    for (uint8 t = minn + 1; t < maxn; t++)
+    uint32 total_w = 0;         // ÐÂÔö£º²ÎÓë·ÖÀàµÄ×ÜÏñËØÊý£¬ÓÃÓÚ°ÑÀà¼ä·½²î¹éÒ»»¯µ½ 0~1 Á¿¼¶
+    uint64 total_u = 0;         // ÐÂÔö£º×Ü»Ò¶ÈºÍ ¦²i¡¤huidu[i]£¬64 Î»·ÀÒç³ö
+    for (int t = minn; t <= maxn; t++)
+    {
+        total_w += huidu[t];
+        total_u += (uint64)t * huidu[t];
+    }
+    uint32 w0 = huidu[minn];    // ÐÂÔö£º¹ö¶¯ÀÛ¼ÓµÄ×óÀàÏñËØÊý£¬±ÜÃâ 256 ¸öÇ°×ººÍÊý×éÕ¼ÓÃÕ»£¨TC264 ustack0 ½ö 2 KB£©
+    uint64 u0 = (uint64)minn * huidu[minn]; // ÐÂÔö£º¹ö¶¯ÀÛ¼ÓµÄ×óÀà»Ò¶ÈºÍ
+    for (int t = minn + 1; t < maxn; t++)   // ÓÃ int ¶ø·Ç uint8£¬±ÜÃâ maxn=255 Ê± t++ Òç³ö³É 0 µ¼ÖÂËÀÑ­»·
     { //·ÀÖ¹³ý0
-        uint64_t w0 = 0, w1 = 0;
-        float u0 = 0, u1 = 0;
-        for (int i = minn; i <= t; i++)
+        w0 += huidu[t];
+        u0 += (uint64)t * huidu[t];
+        uint64_t w1 = total_w - w0;
+        uint64_t u1 = total_u - u0;
+        if (w0 == 0 || w1 == 0)
+            continue;
+        float m0 = (float)u0 / (float)w0;   // ÐÂÔö£º×óÀà¾ùÖµ£»Ô­°æ u0/u1 ÊÇ¾ùÖµ£¬ÕâÀï±£³ÖÍ¬Ò»º¬Òå
+        float m1 = (float)u1 / (float)w1;   // ÐÂÔö£ºÓÒÀà¾ùÖµ
+        // Àà¼ä·½²î°´ N^2 ¹éÒ»»¯£ºÔ­°æ w0*w1*(m0-m1)^2 »áµ½ 1e13£¬float32 Ö»Ê£ 5~6 Î»ÓÐÐ§Êý×Ö£¨±¨¸æ P2-7£©
+        float between = ((float)w0 / total_w) * ((float)w1 / total_w) * (m0 - m1) * (m0 - m1);
+        if (between > fangcha)
         {
-            w0 += huidu[i];
-            u0 += i * huidu[i];
-        }
-        for (int i = t + 1; i <= maxn; i++)
-        {
-            w1 += huidu[i];
-            u1 += i * huidu[i];
-
-        }
-        u0 /= w0; //³ýÒÔÀàÄÚÔªËØ¸öÊý
-        u1 /= w1; //Í¬Àí
-        if (((uint64) (w0 * w1)) * (u0 - u1) * (u0 - u1) > fangcha)
-        {
-            fangcha = ((uint64) (w0 * w1)) * (u0 - u1) * (u0 - u1);
+            fangcha = between;
             best_value = t;
         }
-
     }
-    now_zhi_xin_du = fangcha / zong_fang_cha;
+    // zong_fang_cha Í¬²½¸ÄÎª¡¸×Ü·½²î¡¹£¨Ô­°æÊÇ ×Ü·½²î¡ÁN^2£©£¬Á½ÕßÍ¬³ý N^2£¬ÖÃÐÅ¶ÈÅÐ¾ÝÓë now_zhi_xin_du ±£³Ö²»±ä
+    now_zhi_xin_du = (zong_fang_cha > 0) ? (fangcha / zong_fang_cha) : 0;
     return fangcha > zong_fang_cha * zhi_xin_du ? best_value : -1; //<0.6²»²ÉÄÉ£¬¸Ã·½²î²»Òª³ýÒÔscale
 }
 
@@ -280,82 +284,57 @@ void double_value (uint8_t image[][MT9V03X_W])
         }
     }
 
+    // ²¹³¥Ç°ÖØÖÃ min/max£º°ÑÔ­¡¸²¹³¥ºóÔÙÉ¨Ò»±éÈ«Í¼¡¹ºÏ²¢½øÏÂÃæÕâ´ÎÐ´»Ø±éÀú£¬
+    // ÑÏ¸ñ±£³Ö¡¸Ö»Í³¼Æ 1..H-2 / 1..W-2 ÄÚ²¿ÇøÓò¡¹µÄÔ­ÓÐ¿Ú¾¶£¨·Ö¶Î profile ÖÐÔ­Õ¼ 6~8%£©
+    minn = 255, maxn = 0;
     {
-
         for (int i = 0; i < MT9V03X_H; i++)
         {
-
+            // Ñ­»·²»±äÁ¿ÍâÌá£ºÍ¬Ò»ÐÐÄÚ kuai_gao[i]/wy[i].n ºã¶¨£¬Debug -O0 ÏÂ±àÒëÆ÷²»»á×Ô¶¯ÍâÌá£¨±¨¸æ P2-1 Ðø£©
+            int16 row_up = kuai_gao[i];
+            int16 row_down = row_up + 1;
+            int32 wy_n = wy[i].n;                             // ÐÂÔö£ºÐÐ²åÖµÈ¨ÖØ£¬±ÜÃâÃ¿ÏñËØÖØ¸´²é±í
+            const int16 *tab_up = fen_kuai_bu_chang[row_up];  // ÐÂÔö£º±¾ÐÐÉÏ²à²¹³¥±íÐÐÊ×Ö¸Õë
+            const int16 *tab_down = fen_kuai_bu_chang[row_down]; // ÐÂÔö£º±¾ÐÐÏÂ²à²¹³¥±íÐÐÊ×Ö¸Õë
+            uint8 *row = image[i];                            // ÐÂÔö£ºµ±Ç°ÐÐÊ×Ö¸Õë£¬Ê¡µôÃ¿ÏñËØ¶þÎ¬µØÖ·¼ÆËã
+            int inner_row = (i > 0 && i < MT9V03X_H - 1);    // ÐÂÔö£º±¾ÐÐÊÇ·ñÊôÓÚÔ­ min/max Í³¼ÆµÄÄÚ²¿ÇøÓò
+            // ÐÂÔö£ºÊúÏß²åÖµÖ»ÒÀÀµÁÐ¿éË÷Òý c ÓëÐÐÈ¨ÖØ wy_n£¬ÓëÏñËØ j ÎÞ¹Ø£»kuai_kuan ÖµÓò 0~2
+            // £¨image_init ÓÉ (l*2-47)/94 ÇÒ l<=164 µÃ³ö£©£¬¹Ê c+1<=3£¬ÕûÐÐÖ»ÐèÔ¤Ëã 4 ¸öÖµ£¬
+            // Ìæ´úÃ¿ÏñËØ 4 ´Î²¹³¥±í²é±í + 2 ´Î³Ë¼Ó£¨·Ö¶Î profile ÖÐ×î´óÈÈµã¡¸²¹³¥Ð´»ØÈ«Í¼¡¹£©
+            int32_t row_rv[4];
+            for (int c = 0; c < 4; c++)
+                row_rv[c] = tab_up[c] + (((tab_down[c] - tab_up[c]) * wy_n) >> 8);
             for (int j = 0; j < MT9V03X_W; j++)
             {
-                int k = i, l = j;
-                uint8 *now_dot = &image[i][j];
-                huidu[*now_dot]--;
-                if (k <= 20)
-                    k = 20;
-                else if (k >= 99)
-                    k = 99;
-                if (l <= 24)
-                    l = 24;
-                else if (l >= 164)
-                    l = 164;
-                row_up = kuai_gao[i];
-                row_down = row_up + 1;
-                col_left = kuai_kuan[j];
-                col_right = col_left + 1;
-               // cha_zhi_update(k, l);
-                const int32_t A = fen_kuai_bu_chang[row_up][col_left];
-                const int32_t B = fen_kuai_bu_chang[row_down][col_left];
-                const int32_t C = fen_kuai_bu_chang[row_up][col_right];
-                const int32_t D = fen_kuai_bu_chang[row_down][col_right];
-                int32_t rvL = A + (((B - A) * wy[i].n) >> 8);          // ×ó±ßÊúÏßÉÏµÄµã
-                int32_t rvR = C + (((D - C) * wy[i].n) >> 8);          // ÓÒ±ßÊúÏßÉÏµÄµã
-                int32_t val = rvL + (((rvR - rvL) * wx[j].n) >> 8);    // ×îÖÕÖµ
-
+                uint8 *now_dot = &row[j];
+                uint8 old_dot = *now_dot;                     // ÐÂÔö£º»º´æÔ­»Ò¶È£¬¼õÉÙÒ»´Î½âÒýÓÃ
+                huidu[old_dot]--;
+                int16 col_left = kuai_kuan[j];
+                int32_t rvL = row_rv[col_left];
+                int32_t rvR = row_rv[col_left + 1];
+                int32_t val = rvL + (((rvR - rvL) * wx[j].n) >> 8);
                 int32_t bu_chang = quan_jv_an_bu - val;
-                /* ((cha_zhi[0].n * fen_kuai_bu_chang[row_up][col_left]
-                 + cha_zhi[1].n * fen_kuai_bu_chang[row_up][col_right]
-                 + cha_zhi[2].n * fen_kuai_bu_chang[row_down][col_left]
-                 + cha_zhi[3].n * fen_kuai_bu_chang[row_down][col_right]) >> 16);//¼ÆËãÊ±ÓÃÁËwx,wy 256¶¨±ÈÊý£¬ÐèÒª³ýÒÔ65536
-                 */
                 bu_chang = max(-40, min(40,bu_chang));
-                *now_dot = to_uint8(bu_chang + *now_dot);                 //µØÖ·
+                *now_dot = to_uint8(bu_chang + old_dot);
                 huidu[*now_dot]++;
+                if (inner_row && j > 0 && j < MT9V03X_W - 1)
+                {
+                    minn = min(minn, *now_dot);
+                    maxn = max(maxn, *now_dot);
+                }
             }
         }
     }
-    minn = 255, maxn = 0;                 //ÖØÐÂÍ³¼Æmin,max
-    for (int i = 1; i < MT9V03X_H - 1; i++)
-    {
-        for (int j = 1; j < MT9V03X_W - 1; j++)
-        {
-
-            uint8 x = image[i][j];
-            minn = min(minn, x);
-            maxn = max(maxn, x);
-        }
-    }
-    //´¦Àíºó
+    //´¦Àíºó£º×Ü·½²î¸ÄÓÉÖ±·½Í¼ O(256) Ò»±éËã³ö£¬Ìæ´úÔ­À´Á½±éÈ«Í¼É¨Ãè£¨Ã¿±é 22560 ÏñËØ£¬±¨¸æ ¡ì6 #5£©
     int64 sum = 0;
-    for (int i = 0; i < MT9V03X_H; i++)
+    int64 sum2 = 0;             // ÐÂÔö£º¦²(i^2¡¤huidu[i])£¬Óë sum Ò»ÆðÓÉÖ±·½Í¼µÃ³ö E[x^2]
+    for (int t = 0; t < 256; t++)
     {
-        for (int j = 0; j < MT9V03X_W; j++)
-        {
-            sum += image[i][j];
-
-        }
+        sum  += (int64)t * huidu[t];
+        sum2 += (int64)t * t * huidu[t];
     }
-    int64 avr = sum / scale;
-    sum = 0;
-    for (int i = 0; i < MT9V03X_H; i++)
-    {
-        for (int j = 0; j < MT9V03X_W; j++)
-        {
-            int64 tmp = image[i][j] - avr;
-            sum += tmp * tmp;
-
-        }
-    }
-    float fangcha = (float) (sum * scale);                  //¼ÆËã×Ü·½²î,×¢Òâ²»Òª³ýÒÔscale£¬ÄÜ¼Ó¿ìÔËÐÐËÙ¶È
+    float mean = (float)sum / (float)scale;                // ÐÂÔö£º¾«È·Æ½¾ù»Ò¶È£¬Ìæ´úÔ­ÕûÊý avr
+    float fangcha = (float)sum2 / (float)scale - mean * mean; // ×Ü·½²î = E[x^2]-(E[x])^2£»Óë da_jin_fa µÄÀà¼ä·½²îÍ¬³ß¶È
     fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha, zhi_xin_du);
     if (fa_zhi >= 0)
     {

@@ -113,7 +113,9 @@ int core0_main (void)
             ticks = START_TIME + 1;
 
         // 摄像头断流保护：放在帧分支外，0.5 s 无新帧时也能持续回中降速（原写法在 continue 之后，是死代码）
-        if ((int64)now_ticks - last_frame > WU_ZHEN_CHAO_SHI)
+        // system_getval() 是 uint32/10ns，42.95 s 回绕；用 uint32 减法（模运算天然跨回绕），
+        // 原 int64 写法在回绕点会得到负差值，导致断流保护最长失效 43 s
+        if ((uint32)(now_ticks - (uint32)last_frame) > WU_ZHEN_CHAO_SHI)
         {
             control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
             pid_reset();
