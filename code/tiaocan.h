@@ -124,4 +124,22 @@
  * ② 推车走直线 10 圈：编码器脉冲 / 10 = 每轮圈脉冲，填回 TURN_MEI_LUN_QUAN_CHONG_MEI_DU（左右轮分别量，取平均）。
  * ③ 地面画圆跑 turn(90)，量实际角度 X：如果半径对但角度不对，改的是「每圈脉冲」；半径不对改 TURN_ZUI_DA_ZHUAN_JIAO_DU。 */
 
+
+/* ========== 七、双电机驱动层（motor.c，2026-11-07） ========== */
+/* 这一节只管"两轮各给多少占空比"。巡线在 control.c、转弯在 turn()，两边都经 drive() 输出，
+ * 不要再直接写电机 PWM，否则左右轮又会各写各的。 */
+
+#define MOTOR_PWM_MAX           10000   // 单轮占空比硬限幅，逐飞库量程 0~10000
+#define MOTOR_PWM_PINLV         17000   // 两路电机 PWM 频率，必须同频，不同频低速段两轮响应差很多
+#define MOTOR_DIR_ZUO_LEVEL     0       // 左电机方向脚（P02.5 / DRV8701E IN2）前进电平，实车反了改 1
+#define MOTOR_DIR_YOU_LEVEL     0       // 右电机方向脚（P02.7 / IN2）前进电平，实车反了改 1
+#define MOTOR_CE_SU_WIN         1000000 // 测速窗口 10 ms（1 ms = 100000，system_getval 单位 10 ns）
+
+/* 巡线差速：默认关闭，两轮同占空比。
+ * 打开后按舵机偏置给内轮减速，减少阿克曼转弯时内外轮的拖滑；系数别大，先从 15~25 试。
+ * 方向必须实车确认：若打舵与减速轮对不上（车画龙），把 MOTOR_DIFF_FANG_XIANG 改成 -1。 */
+#define MOTOR_DIFF_ENABLE       0       // 1 = 开启巡线差速
+#define MOTOR_DIFF_NEI_XISHU    25      // 内轮最多减 25%（百分比）
+#define MOTOR_DIFF_FANG_XIANG   1       // +1 = delta 为正时右轮是内轮；实车相反改 -1
+
 #endif /* TIAOCAN_H */

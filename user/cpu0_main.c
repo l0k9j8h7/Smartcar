@@ -58,6 +58,7 @@
 #include"control.h"
 #include"image.h"
 #include"tiaocan.h"
+#include"motor.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -91,22 +92,8 @@ int core0_main (void)
      *   舵机     P33.9 = ATOM0_CH1，50 Hz
      * 注意：P02.0~P02.3 是摄像头 VSY/PCLK/SCCB，P02.4~P02.7 全给了电机，P02 口已排满。
      * 旧版「左 TIM2 P33_7/6 + 右 TIM4 P02_8/P33_5」已作废，改接线后必须用下面这两行。 */
-    encoder_quad_init(TURN_ENCODER_ZUO, TIM5_ENCODER_CH1_P21_7, TIM5_ENCODER_CH2_P21_6);
-    encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
-
-    /* 方向脚先压成低电平：pwm_init 之前驱动板 IN2 是悬空的，轮子可能抽一下。
-     * 若实车发现前进变后退，只改这两个初值（0 <-> 1）即可，不用动闭环。 */
-    gpio_init(TURN_DIR_ZUO, GPO, 0, GPO_PUSH_PULL);
-    gpio_init(TURN_DIR_YOU, GPO, 0, GPO_PUSH_PULL);
-
-    pwm_init(TURN_PWM_ZUO, 17000, 0);               // 左电机 17 kHz
-    pwm_init(TURN_PWM_YOU, 17000, 0);               // 右电机 17 kHz，必须与左同频
+    motor_init();                                   // 双电机 PWM + 两路方向脚 + 两路编码器，见 code/motor.c
     pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    // 舵机 50 Hz，中值 750
-
-    /* 上电把两路电机都清零：pwm_init 的初值虽然是 0，但从复位到这里的空窗期里
-     * 电机驱动可能被拉高，明确清一次更稳妥 */
-    pwm_set_duty(TURN_PWM_ZUO, 0);
-    pwm_set_duty(TURN_PWM_YOU, 0);
     gpio_init(P33_1, GPO, 1, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(&camera_obj, SEEKFREE_ASSISTANT_CAMERA_TYPE_MT9V03X,
@@ -136,6 +123,7 @@ int core0_main (void)
     last_frame = start_ticks;   // last_frame 为最近一帧时间戳，初始化成发车时刻供断流保护使用
     while (TRUE)       //需要添加帧同步信号防止撕裂
     {
+        motor_speed_update();                   // 10 ms 限频的编码器测速，接口见 motor.h
         uint32 now_ticks = system_getval();     // 本轮时间戳：帧间隔与断流判断共用一个时刻，避免重复取时钟
         uint32 ticks = now_ticks - start_ticks; //计算t
         if (ticks > START_TIME)

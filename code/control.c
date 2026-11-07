@@ -1,5 +1,6 @@
 #include "zf_common_headfile.h"
 #include"control.h"
+#include"motor.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -8,10 +9,9 @@
 
 void stop (void)
 {
-    pwm_set_duty(ATOM0_CH4_P02_4, 0);
+    drive_stop();                                   // 左右轮一起断，别只关左轮
     pwm_set_duty(ATOM0_CH1_P33_9, SERVO_CENTER);
     pid_reset();
-
 }
 volatile int16 err = 0;
 int16 P, I, D, last_err, last_last_err;
@@ -48,19 +48,35 @@ int16 pid (void)
 }
 void control (uint32 tick, int16 delta, int speed)
 {
+    int32 ji_chu = (speed > 0) ? (int32)speed : 0;      // 负 speed 会让无符号占空比变成极大值，先挡掉
+    int32 zuo, you;
 
     if (tick < START_TIME)
     {
-        //占空比逐渐增大
-        uint32 now_max_speed = (speed > 0)      // 负 speed 参与 uint64 运算会变成极大占空比，先挡掉
-                ? (uint32) min(speed, (uint64)((uint64)tick * (uint64)speed / START_TIME))
-                : 0;                            //速度递增
-        pwm_set_duty(ATOM0_CH4_P02_4, now_max_speed);
+        /* 软启动：0.3 s 内线性爬到目标占空比 */
+        uint32 jia_su = (uint32)((uint64)tick * (uint64)ji_chu / START_TIME);
+        if (jia_su < (uint32)ji_chu)
+            ji_chu = (int32)jia_su;
     }
-    else
+
+    zuo = ji_chu;
+    you = ji_chu;
+
+#if MOTOR_DIFF_ENABLE
     {
-        pwm_set_duty(ATOM0_CH4_P02_4, speed);
+        int32 pian  = (delta > 0) ? (int32)delta : -(int32)delta;
+        int32 jian  = pian * MOTOR_DIFF_NEI_XISHU / DELTA_LIMIT;    // 打舵越多，内轮减得越多
+        int32 zhuan = (int32)delta * MOTOR_DIFF_FANG_XIANG;
+
+        if (jian > MOTOR_DIFF_NEI_XISHU) jian = MOTOR_DIFF_NEI_XISHU;
+        if (zhuan > 0)
+            you = ji_chu * (100 - jian) / 100;                      // 右转，右轮是内轮
+        else if (zhuan < 0)
+            zuo = ji_chu * (100 - jian) / 100;                      // 左转，左轮是内轮
     }
+#endif
+
+    drive((int16)zuo, (int16)you);                                  // 两轮统一出口，右轮从此有输出
     pwm_set_duty(ATOM0_CH1_P33_9, min(max(SERVO_CENTER + delta, SERVO_MIN), SERVO_MAX));   // 一个方向
 }   // PID参数设置，提高P值能够使反应更快，但可能会过冲，设置i值，能够让整体轨迹更接近目标值，d值能够减小过冲（振荡）。
 //调节顺序 / I 调节 / D 只在突变时起作用，三段原文
@@ -95,8 +111,6 @@ volatile int16 turn_shi_ji_jiao_du   = 0;       // 按两轮平均里程反算的实际转角
 volatile int16 turn_shi_ji_ban_jing  = 0;       // 由实测左右轮速比反推的半径 mm，标定/排障看它
 volatile uint8 turn_jie_guo          = TURN_WAN_CHENG;
 
-static const pwm_channel_enum turn_dian_ji[2] = { TURN_PWM_ZUO, TURN_PWM_YOU };   // [0]左 [1]右
-
 static int32 turn_qu_jue_dui (int32 v)
 {
     return (v < 0) ? -v : v;
@@ -109,8 +123,7 @@ static void turn_tuo_zhan (int32 cc_l, int32 cc_r)
     if (cc_r < 0) cc_r = 0;
     if (cc_l > TURN_ZUI_DA_ZHAN_KONG) cc_l = TURN_ZUI_DA_ZHAN_KONG;   // 仅钳局部副本
     if (cc_r > TURN_ZUI_DA_ZHAN_KONG) cc_r = TURN_ZUI_DA_ZHAN_KONG;
-    pwm_set_duty(turn_dian_ji[0], (uint32)cc_l);
-    pwm_set_duty(turn_dian_ji[1], (uint32)cc_r);
+    drive((int16)cc_l, (int16)cc_r);                                  // 与巡线共用同一个双轮出口
 }
 
 int16 turn (int16 degrees)
