@@ -69,10 +69,12 @@
  * 标定拆成四个能直接量的长度/计数，先量再跑，别用拍的数。 */
 
 /* --- 6.1 硬件 --- */
-#define TURN_PWM_ZUO            ATOM0_CH4_P02_4     // 左电机 PWM（cpu0_main 已初始化）
-#define TURN_PWM_YOU            ATOM0_CH5_P02_5     // 右电机 PWM（cpu0_main 已初始化，改引脚两处一起改）
-#define TURN_ENCODER_ZUO        TIM2_ENCODER        // 左轮编码器 TIM2: P33_7/P33_6（已在用）
-#define TURN_ENCODER_YOU        TIM4_ENCODER        // 右轮编码器 TIM4: P02_8/P33_5（cpu0_main 已初始化）
+#define TURN_PWM_ZUO            ATOM0_CH4_P02_4     // 左电机 PWM：P02.4（ATOM0_CH4）
+#define TURN_PWM_YOU            ATOM0_CH6_P02_6     // 右电机 PWM：P02.6（ATOM0_CH6）
+#define TURN_DIR_ZUO            P02_5               // 左电机方向：P02.5（DRV8701E 的 IN2，普通 GPIO）
+#define TURN_DIR_YOU            P02_7               // 右电机方向：P02.7（DRV8701E 的 IN2，普通 GPIO）
+#define TURN_ENCODER_ZUO        TIM5_ENCODER        // 左轮编码器 TIM5: P21_7(A)/P21_6(B)
+#define TURN_ENCODER_YOU        TIM2_ENCODER        // 右轮编码器 TIM2: P33_7(A)/P33_6(B)
 #define TURN_FANG_XIANG         1                   // 转向极性：+1 = 正角度右转；实车相反改 -1
 #define TURN_STEER_DUTY         250                 // 舵机相对 SERVO_CENTER 的偏置，配合 TURN_ZUI_DA_ZHUAN_JIAO_DU 一起调
 

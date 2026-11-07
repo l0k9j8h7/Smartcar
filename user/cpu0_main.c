@@ -83,20 +83,25 @@ int core0_main (void)
     system_start(); //计时启动
     // 此处编写用户代码 例如外设初始化代码等
     zf_log(mt9v03x_init(), "mt9v03x init error");
-    //encoder_quad_init(TIM4_ENCODER,TIM4_ENCODER_CH1_P33_9, TIM4_ENCODER_CH2_P33_8);
-    encoder_quad_init(TIM2_ENCODER, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
-    pwm_init(ATOM0_CH4_P02_4, 17000, 0);    // 引脚在 zf_device/pwm 里按通道映射，电机
-    pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    //舵机
+    /* ---------------- 电机 / 编码器 / 舵机（按 2026-11-07 实车接线表） ----------------
+     *   左电机   P02.4 = PWM(ATOM0_CH4)   P02.5 = DIR(GPIO)
+     *   右电机   P02.6 = PWM(ATOM0_CH6)   P02.7 = DIR(GPIO)
+     *   左编码器 P21.7 = A  P21.6 = B     -> TIM5
+     *   右编码器 P33.7 = A  P33.6 = B     -> TIM2
+     *   舵机     P33.9 = ATOM0_CH1，50 Hz
+     * 注意：P02.0~P02.3 是摄像头 VSY/PCLK/SCCB，P02.4~P02.7 全给了电机，P02 口已排满。
+     * 旧版「左 TIM2 P33_7/6 + 右 TIM4 P02_8/P33_5」已作废，改接线后必须用下面这两行。 */
+    encoder_quad_init(TURN_ENCODER_ZUO, TIM5_ENCODER_CH1_P21_7, TIM5_ENCODER_CH2_P21_6);
+    encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
 
-    /* ---------------- 差速转弯所需外设（turn 函数用） ----------------
-     * ★ 下面两组引脚和定时器是按「C 车模常见布局」写的默认值，上电前务必与实车接线核对：
-     *   ① 若右电机不是接 P02_5，改 TURN_PWM_YOU（tiaocan.h 6.1 节）同时改这里的引脚；
-     *   ② 若右轮编码器不是 TIM4 的 P02_8/P33_5，改 TURN_ENCODER_YOU 并同步改这里；
-     *   ③ 左右轮装反了，现象是 turn() 往反方向转、或外轮反而更慢 —— 直接对调两个编码器/两路 PWM。
-     * 频率与左电机保持一致（17 kHz），否则左右轮低速响应不同，差速环会一直修。 */
-    pwm_init(TURN_PWM_YOU, 17000, 0);                                        // 右电机 PWM
-    encoder_quad_init(TURN_ENCODER_YOU,
-                      TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P33_5);       // 右轮编码器
+    /* 方向脚先压成低电平：pwm_init 之前驱动板 IN2 是悬空的，轮子可能抽一下。
+     * 若实车发现前进变后退，只改这两个初值（0 <-> 1）即可，不用动闭环。 */
+    gpio_init(TURN_DIR_ZUO, GPO, 0, GPO_PUSH_PULL);
+    gpio_init(TURN_DIR_YOU, GPO, 0, GPO_PUSH_PULL);
+
+    pwm_init(TURN_PWM_ZUO, 17000, 0);               // 左电机 17 kHz
+    pwm_init(TURN_PWM_YOU, 17000, 0);               // 右电机 17 kHz，必须与左同频
+    pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    // 舵机 50 Hz，中值 750
 
     /* 上电把两路电机都清零：pwm_init 的初值虽然是 0，但从复位到这里的空窗期里
      * 电机驱动可能被拉高，明确清一次更稳妥 */
