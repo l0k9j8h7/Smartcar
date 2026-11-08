@@ -145,6 +145,33 @@ static inline uint8 to_uint8 (int32 tmp)
 {
     return (uint8) (max(min(tmp,255), 0));
 }
+
+/* 极性自校正（251e810 报告 §7.4 第 1 条「反色缺失」，P0）
+ * 上面二值化只把「比阈值亮」的像素写成 255。白底黑线是常规赛道，这样写出来是背景白、
+ * 线黑，而 find_line 把非 0 当线，等于整帧拿背景当线；黑底白线又相反。这里不预设场地
+ * 极性，直接数白点：白色过半说明 255 是背景，整帧取反，保证「线 = 255」这条全链路约定
+ * 在任何场地都成立。正常白线场景白色占比远低于一半，不会误触发。 */
+static void baise_jiao_zheng (uint8_t image[][MT9V03X_W])
+{
+    uint32 bai  = 0;
+    uint32 zong = (uint32)MT9V03X_H * (uint32)MT9V03X_W;
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        for (int j = 0; j < MT9V03X_W; j++)
+        {
+            if (image[i][j])
+                bai++;
+        }
+    }
+    if (bai * 2 <= zong)
+        return;                                     // 白色不过半：线就是白色，二值化结果直接用
+    for (int i = 0; i < MT9V03X_H; i++)
+    {
+        for (int j = 0; j < MT9V03X_W; j++)
+            image[i][j] = (uint8)(image[i][j] ? 0 : 255);
+    }
+}
+
 int64 consist_fail = 0;
 uint8 image_valid = 1;          // 本帧二值化结果是否可信；0 表示白线已丢失，主循环应走丢线保护
 uint16 fail_recent = 0;         // 最近窗口内二值化失败累计：成功帧只衰减不清零，避免交替成败时永远进不了保护
@@ -347,6 +374,7 @@ void double_value (uint8_t image[][MT9V03X_W])
 
             }
         }
+        baise_jiao_zheng(image);                            // 极性校正后再备份，回退图与当前帧口径一致
         memcpy(last_image_copy, image, MT9V03X_IMAGE_SIZE); // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
         last_image_exist = 1;
         consist_fail = 0;
@@ -376,6 +404,7 @@ void double_value (uint8_t image[][MT9V03X_W])
 
                 }
             }
+            baise_jiao_zheng(image);                        // 硬阈值同样要走极性校正，否则丢线帧的「线」还是背景
             image_valid = 0;                    // 连续失败 ≥6 帧改用硬阈值，白线基本全丢，明确判不可信
         }
     }
@@ -578,15 +607,18 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
     const int32 yuanzuo = x >> 8, yuanyou = x - (yuanzuo << 8);
     int32 lline = x >> 8, rline = x - (lline << 8), lh = MT9V03X_H - 1, rh = MT9V03X_H - 1;
     int8 lfail = 0, rfail = 0;
-    while (rh > MT9V03X_H - 1 - ZUI_DA_GAO_DU /*高度相同*/&& rline != MT9V03X_W - 1/*到达地图边界或向上n格*/&& rline > lline
-            && lline != 0 && lfail <= YUN_XV_SHI_BAI_CI_SHU && rfail <= YUN_XV_SHI_BAI_CI_SHU
+    /* 边界不再作为退出条件（251e810 报告 §4.1）：原来 rline 贴 187 / lline 贴 0 就跳出循环，
+     * 随后因高度差为 0 整帧返回 -65535，而单边线贴边恰恰是最常见的情况，斜率因此整帧失效。
+     * 改为贴边后竖直继续爬，只在真正可能越界时钳住列号（rline+1 / lline-1 的下标防护）。 */
+    while (rh > MT9V03X_H - 1 - ZUI_DA_GAO_DU /*至少爬 ZUI_DA_GAO_DU 行*/ && rline > lline
+            && lfail <= YUN_XV_SHI_BAI_CI_SHU && rfail <= YUN_XV_SHI_BAI_CI_SHU
             && rline - lline <= MAX_LINE_WIDTH)
     {
-        while ((rline + 1) != MT9V03X_W - 1 && image[rh][rline + 1] && rline - lline <= MAX_LINE_WIDTH)
+        while (rline + 1 < MT9V03X_W && image[rh][rline + 1] && rline - lline <= MAX_LINE_WIDTH)
         { //一直向右转
             rline = rline + 1;
         }
-        if (image[rh - 1][rline + 1]) //右上
+        if (rline + 1 < MT9V03X_W && image[rh - 1][rline + 1]) //右上（贴右边界时跳过，防越界）
         {
             rh--; //从下往上面需要用减
             rline++;
@@ -595,18 +627,18 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         {
             rh--;
         }
-        else if (image[rh - 1][rline - 1])
+        else if (rline > 0 && image[rh - 1][rline - 1])
         {
             rh--;
             rline--;
         }
         else
             rfail++, rh--;
-        while ((lline - 1) != 0 && image[lh][lline - 1] && rline - lline <= MAX_LINE_WIDTH)
+        while (lline > 0 && image[lh][lline - 1] && rline - lline <= MAX_LINE_WIDTH)
         {
             lline = lline - 1;
         }
-        if (image[lh - 1][lline - 1]) //
+        if (lline > 0 && image[lh - 1][lline - 1]) //左上（贴左边界时跳过，防越界）
         {
             lh--;
             lline--;
@@ -615,7 +647,7 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
         {
             lh--;
         }
-        else if (image[lh - 1][lline + 1])
+        else if (lline + 1 < MT9V03X_W && image[lh - 1][lline + 1])
         {
             lh--;
             lline++;

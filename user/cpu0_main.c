@@ -63,7 +63,7 @@
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
 
-extern volatile uint8 copy_flag;
+extern volatile uint16 copy_flag;   // 与 cpu1_main.c 保持一致：uint8 靠 250→255 溢出当哨兵，跨核语义太脆
 extern uint8_t copy[MT9V03X_H][MT9V03X_W];
 extern  volatile uint8 busy;
 int64 last_frame=0;//记录上一帧的时间
@@ -76,6 +76,50 @@ seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
 extern volatile int16 err;
 uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
+
+/* ---------------- 丢线记忆 + 缓降速度（251e810 报告 §5.1 / §7.4 第 6 条） ----------------
+ * 旧写法丢线就回中：车顺着上一次的偏差直直冲出去，"回中"等于放弃追赶。
+ * 只看一帧也不行：单帧抖动或二值化失败就满舵，救回来又被自己甩出赛道。
+ * 所以记「丢线前的打舵状态」并缓降速度：
+ *   - 丢线第 1 帧接管：记住丢线前的舵机偏置与车速（上一次有效帧的值）
+ *   - 丢线持续：速度每帧按 DIU_XIAN_JIAN_SU 递减，舵机维持记忆偏置，不抖不甩
+ *   - 超过 DIU_XIAN_ZUI_DA_ZHEN 帧仍无线：按 DIU_XIAN_MANG_QU_BI 加大打舵，死马当活马医
+ *   - 重新找到线：一切交回巡线（err / pid 重新建立），速度由正常路径给回 MAX_SPEED
+ * 断流保护（0.5 s 无新帧）走的是另一条路，不进这里的记忆。 */
+volatile uint8 diu_xian_zhen    = 0;       // 已连续丢线帧数，0 = 在线
+volatile int16 diu_xian_delta   = 0;       // 记忆的舵机偏置（丢线前最后一次有效输出）
+volatile int32 diu_xian_su_du   = 0;       // 记忆并逐帧衰减的车速（占空比）
+
+/* 正常巡线帧调用：记住这一帧的输出与速度，供丢线时接管 */
+static void diu_xian_ji_yi (int16 delta, int speed)
+{
+    diu_xian_delta   = delta;
+    diu_xian_su_du   = (speed > 0) ? (int32)speed : 0;
+    diu_xian_zhen    = 0;
+}
+
+/* 丢线帧调用：返回本帧该给的车速，舵机偏置从 diu_xian_delta 取 */
+static int diu_xian_jiang_su (void)
+{
+    if (diu_xian_zhen < 255)
+        diu_xian_zhen++;
+
+    if (diu_xian_zhen == 1)                              // 第 1 帧：直接沿用丢线前的车速
+        return (int)diu_xian_su_du;
+
+    diu_xian_su_du = diu_xian_su_du * (100 - DIU_XIAN_JIAN_SU) / 100;   // 之后每帧缓降
+    if (diu_xian_su_du < DIU_XIAN_ZUI_DI_SU)
+        diu_xian_su_du = DIU_XIAN_ZUI_DI_SU;
+
+    if (diu_xian_zhen > DIU_XIAN_ZUI_DA_ZHEN)            // 一直找不到线：加大打舵再搏一次
+    {
+        if (diu_xian_delta > 0)
+            diu_xian_delta = (int16)min(diu_xian_delta + DIU_XIAN_MANG_QU_BI, DELTA_LIMIT);
+        else if (diu_xian_delta < 0)
+            diu_xian_delta = (int16)max(diu_xian_delta - DIU_XIAN_MANG_QU_BI, -DELTA_LIMIT);
+    }
+    return (int)diu_xian_su_du;
+}
 // **************************** 代码区域 ****************************
 int core0_main (void)
 {
@@ -161,7 +205,7 @@ int core0_main (void)
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
             if (!image_valid)                   // 二值化已判不可信（连续失败/硬阈值回退），白线大概率已丢，不再拿它算 err
             {
-                control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
+                control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
                 pid_reset();
                 continue;
             }
@@ -183,16 +227,17 @@ int core0_main (void)
             int rline = x & 0xFF; /* 右边界列 0~187 */
             if (x < 0 || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX)
             {
-                control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);   // 丢线时舵机回中并降速
+                control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
                 pid_reset();
                 continue;
             }
             err = ((lline + rline) - IMAGE_CENTER);
             int delta = pid() + x1 * SLOPE_WEIGHT;
             if (delta > DELTA_LIMIT)
-                delta = 150;
+                delta = DELTA_LIMIT;
             if (delta < -DELTA_LIMIT)
-                delta = -150;
+                delta = -DELTA_LIMIT;
+            diu_xian_ji_yi((int16)delta, MAX_SPEED);         // 记住这一帧，万一下一帧丢线就靠它接管
             control(ticks, (int16) (delta), MAX_SPEED);
         }
     }

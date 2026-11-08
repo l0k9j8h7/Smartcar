@@ -12,7 +12,8 @@
 #define MAX_SPEED 1000              // 电机最大占空比，逐飞库限幅 0~10000
 #define START_TIME 30000000         // 软启动时长 0.3 s，system_getval 单位为 10 ns
 #define ZU_SE_ZHEN_SHU 250          // CPU1 每累计多少帧发送一次图传
-#define SLOW_DOWN_DIV 10            // 丢线/断流保护降速除数，实际速度为 MAX_SPEED / SLOW_DOWN_DIV
+#define SLOW_DOWN_DIV 10            // 断流保护（摄像头 0.5 s 无新帧）降速除数，实际速度为 MAX_SPEED / SLOW_DOWN_DIV
+                                    // 注意：单帧丢线已改为「记忆 + 缓降」，不再直接用这个除数，见第四节 DIU_XIAN_*
 
 /* ========== 二、舵机与方向输出 ========== */
 #define SERVO_CENTER 750            // 舵机中值占空比，回中时使用
@@ -47,6 +48,13 @@
 #define FAIL_RECENT_MAX 1000        // 失败窗口累计上限，防 uint16 溢出
 #define CONSIST_FAIL_MAX 5          // 允许回退上一帧旧图的最大连续失败帧数
 
+/* --- 丢线记忆 + 缓降（报告 §5.1） --- */
+#define DIU_XIAN_JIAN_SU 4          // 丢线后每帧速度衰减百分比（%）。一帧约 20 ms，4% 约 0.5 s 掉到一半，
+                                    // 丢线后还想多冲一点就调小（2~3），想快点贴地就调大（6~8）
+#define DIU_XIAN_ZUI_DI_SU 150      // 缓降的占空比下限，别让车"停在线外"彻底不动
+#define DIU_XIAN_ZUI_DA_ZHEN 15     // 连续丢线超过这么多帧（约 0.3 s）仍找不到线，就加大打舵再搏一次
+#define DIU_XIAN_MANG_QU_BI 20      // 上面那种情况每帧额外加多少偏置，累加到 DELTA_LIMIT 为止，0 = 不加
+
 /* ========== 五、图像处理（原有宏，值保持不变） ========== */
 #define LINEWIDTH 7                 // 找线滑动窗口宽度
 #define YOUXIAOXIANKUAN 5           // 判定为有效线所需的窗口内白点数和
@@ -77,6 +85,9 @@
 #define TURN_ENCODER_YOU        TIM2_ENCODER        // 右轮编码器 TIM2: P33_7(A)/P33_6(B)
 #define TURN_FANG_XIANG         1                   // 转向极性：+1 = 正角度右转；实车相反改 -1
 #define TURN_STEER_DUTY         250                 // 舵机相对 SERVO_CENTER 的偏置，配合 TURN_ZUI_DA_ZHUAN_JIAO_DU 一起调
+                                                    // 注意两套舵机坐标系：巡线 delta 限幅 ±DELTA_LIMIT(150)，转弯这里 ±250。
+                                                    // 250 对应 TURN_ZUI_DA_ZHUAN_JIAO_DU(28°)，改其中任何一个都要同步另一个，
+                                                    // 否则会出现「标称 28° 实际 34°」，半径算不对、转弯角度跟着偏。
 
 /* --- 6.2 车体几何与编码器（★必须实测，尺子量、转一圈数） --- */
 #define TURN_AXIS_MM            200                 // 轴距：前轴到后轴，mm
@@ -118,6 +129,9 @@
                                         // 300 度 -> 8 + 40×300/1000 = 20 s；总时长务必 < 42 s
 #define TURN_BU_CHONG_SHANG_XIAN 2000   // 单次采样脉冲上限，超过视为野值丢弃
 #define TURN_TAI_JIAN_CE_SHI    0       // 1 = 上电自检跑一次 turn(90)，仅台架标定用
+#define TURN_LENG_QUE_ZHEN      18      // 转弯收尾后的舵机冷却帧数，一帧约 20 ms，18 帧≈0.36 s。
+                                        // 期间 control() 强制回中直行，防止旧 err 把刚转过来的车头掰回去。
+                                        // 转完还需要往前抢一段就把值调大（25~30），转完立刻要进弯就调小（8~10）。
 
 /* 台架验收三步
  * ① 两轮都悬空，turn(90)：左右轮都朝同一方向、外轮明显更快；看 turn_shi_ji_ban_jing 是否接近 L/tan(d)。

@@ -15,6 +15,10 @@ void stop (void)
 }
 volatile int16 err = 0;
 int16 P, I, D, last_err, last_last_err;
+/* 转弯后的舵机冷却帧（251e810 报告 §4.2）。turn() 收尾会把舵机回中，
+ * 但紧随其后的一帧 control() 会拿「转弯前留下的 err」立刻反打舵 —— 刚转过来的车头
+ * 又被掰回去，表现为弯道转不干净、出弯画龙。冷却期内 control() 只回中直行。 */
+volatile uint8 turn_leng_que_zhen = 0;
 void pid_reset (void)
 {
     I = 0;
@@ -50,6 +54,13 @@ void control (uint32 tick, int16 delta, int speed)
 {
     int32 ji_chu = (speed > 0) ? (int32)speed : 0;      // 负 speed 会让无符号占空比变成极大值，先挡掉
     int32 zuo, you;
+
+    /* 冷却期：舵机强制回中，只保留速度与软启动，等新一帧图像重新建立误差后再接管 */
+    if (turn_leng_que_zhen)
+    {
+        turn_leng_que_zhen--;
+        delta = 0;
+    }
 
     if (tick < START_TIME)
     {
@@ -368,6 +379,7 @@ int16 turn (int16 degrees)
     pwm_set_duty(ATOM0_CH1_P33_9, SERVO_CENTER);
     system_delay_ms(TURN_TING_CHE_MS);
     pid_reset();
+    turn_leng_que_zhen = TURN_LENG_QUE_ZHEN;    // 交回巡线后先直行若干帧，别让旧 err 把舵机拉回去
 
     /* 回填实测角度：用真实里程 / 每度平均里程，别用浮点 angle 的取整结果 */
     if (mei_du_ping_jun > 0.5f)

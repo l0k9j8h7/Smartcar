@@ -40,7 +40,10 @@
 extern seekfree_assistant_camera_struct camera_obj;
 #pragma section all "cpu1_dsram"
 volatile uint8 busy=0;
-volatile uint8 copy_flag=0;
+/* copy_flag 由 CPU0 每帧自增、CPU1 发送后清零。原来声成 uint8，靠 250→255 溢出这种副作用
+ * 当作"别再加了"的兜底，跨核语义太脆（251e810 报告 §5.2）。改 uint16 后不用再靠溢出，
+ * CPU0 侧的忙等超时（TU_CHUAN_CHAO_SHI）才是唯一兜底。 */
+volatile uint16 copy_flag=0;
 
 extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU1的RAM中
@@ -61,22 +64,17 @@ void core1_main (void)
     cpu_wait_event_ready();                 // 等待所有核心初始化完毕
     while (TRUE)
     {
-        // 此处编写需要循环执行的代码
-        while (TRUE)
-        {
-            if (copy_flag>=ZU_SE_ZHEN_SHU)
-            {           // 由 CPU0 置位的"可发送"标志
+        /* 原来这里是「外层 while + 内层 while」，内层没有 break，外层实际只跑一轮，
+         * 属于无意义的多层结构（251e810 报告 P1-7）。合成单层，逻辑完全等价。 */
+        if (copy_flag>=ZU_SE_ZHEN_SHU)
+        {           // 由 CPU0 置位的"可发送"标志
+            memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
 
-                memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
-
-                copy_flag=0;busy=1;
+            copy_flag=0;
+            busy=1;
             seekfree_assistant_camera_send(&camera_obj);
             busy=0;
-
-            }
         }
-
-        // 此处编写需要循环执行的代码
     }
 }
 #pragma section all restore

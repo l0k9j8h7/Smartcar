@@ -138,7 +138,9 @@ IFX_INTERRUPT(exti_ch1_ch5_isr, 0, EXTI_CH1_CH5_INT_PRIO)
 // }
 IFX_INTERRUPT(exti_ch3_ch7_isr, 0, EXTI_CH3_CH7_INT_PRIO)
 {
-    interrupt_global_enable(0);                     // 开启中断嵌套
+    /* 摄像头 VSYNC 中断内不再开中断嵌套（251e810 报告 §4.3）：先前在这里 interrupt_global_enable(0)
+     * 之后，PIT(10~40) 与 DMA(60) 可以抢占采集时序，camera_vsync_handler 里的 dma_enable 被推迟，
+     * 表现为偶发半帧花屏、丢帧，且只在场上跑起来才复现。采集路径保持原子，其余中断照旧嵌套。 */
     if(exti_flag_get(ERU_CH3_REQ6_P02_0))           // 通道3中断
     {
         exti_flag_clear(ERU_CH3_REQ6_P02_0);
@@ -159,7 +161,8 @@ IFX_INTERRUPT(exti_ch3_ch7_isr, 0, EXTI_CH3_CH7_INT_PRIO)
 // **************************** DMA中断函数 ****************************
 IFX_INTERRUPT(dma_ch5_isr, 0, DMA_INT_PRIO)
 {
-    interrupt_global_enable(0);                     // 开启中断嵌套
+    /* 同理：DMA(60) 是采集链最高优先级的一环，内部再开嵌套等于把自己的搬运过程交给别人打断
+     * （251e810 报告 §4.3）。这里只做收尾与置标志，本来就只有几十条指令，不嵌套不影响实时性。 */
     camera_dma_handler();                           // 摄像头采集完成统一回调函数
 }
 // **************************** DMA中断函数 ****************************
