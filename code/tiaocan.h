@@ -81,7 +81,9 @@
 #define TURN_PWM_YOU            ATOM0_CH6_P02_6     // 右电机 PWM：P02.6（ATOM0_CH6）
 #define TURN_DIR_ZUO            P02_5               // 左电机方向：P02.5（DRV8701E 的 IN2，普通 GPIO）
 #define TURN_DIR_YOU            P02_7               // 右电机方向：P02.7（DRV8701E 的 IN2，普通 GPIO）
-#define TURN_ENCODER_ZUO        TIM5_ENCODER        // 左轮编码器 TIM5: P21_7(A)/P21_6(B)
+#define TURN_ENCODER_ZUO        TIM4_ENCODER        // 左轮编码器 TIM4: P02_8(A)/P33_5(B)，也可把 B 换 P00_9
+                                                    // 原来是 TIM5(P21_7/P21_6)：T5 属 GPT2，没有增量接口模式，
+                                                    // encoder_quad_init 的 zf_assert 会直接死等，见 motor.c 注释
 #define TURN_ENCODER_YOU        TIM2_ENCODER        // 右轮编码器 TIM2: P33_7(A)/P33_6(B)
 #define TURN_FANG_XIANG         1                   // 转向极性：+1 = 正角度右转；实车相反改 -1
 #define TURN_STEER_DUTY         250                 // 舵机相对 SERVO_CENTER 的偏置，配合 TURN_ZUI_DA_ZHUAN_JIAO_DU 一起调

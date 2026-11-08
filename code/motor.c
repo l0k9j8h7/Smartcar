@@ -30,8 +30,12 @@ void motor_init (void)
     gpio_init(TURN_DIR_ZUO, GPO, MOTOR_DIR_ZUO_LEVEL, GPO_PUSH_PULL);
     gpio_init(TURN_DIR_YOU, GPO, MOTOR_DIR_YOU_LEVEL, GPO_PUSH_PULL);
 
-    /* 编码器：左 TIM5(P21_7/P21_6)、右 TIM2(P33_7/P33_6)，2026-11-07 实车接线表 */
-    encoder_quad_init(TURN_ENCODER_ZUO, TIM5_ENCODER_CH1_P21_7, TIM5_ENCODER_CH2_P21_6);
+    /* 编码器：左 TIM4(P02_8/P33_5)、右 TIM2(P33_7/P33_6)，2026-11-08 改线
+     * 原来左轮挂 TIM5 是错的：T5 属 GPT2，T5CON.T5M 只实现 0~3（定时/计数/门控），
+     * 增量接口模式（6/7）是 GPT1 的 T2/T3/T4 专属。encoder_quad_init 第一行
+     * zf_assert(encoder_n <= TIM4_ENCODER) 就会命中，而断言默认开启、命中后 while(TRUE) 死等，
+     * 现象是上电卡在 motor_init() 里、轮子完全不动且无任何串口输出。 */
+    encoder_quad_init(TURN_ENCODER_ZUO, TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P33_5);
     encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
 
     pwm_init(TURN_PWM_ZUO, MOTOR_PWM_PINLV, 0);     // 左电机
