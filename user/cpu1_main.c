@@ -68,10 +68,15 @@ void core1_main (void)
          * 属于无意义的多层结构（251e810 报告 P1-7）。合成单层，逻辑完全等价。 */
         if (copy_flag>=ZU_SE_ZHEN_SHU)
         {           // 由 CPU0 置位的"可发送"标志
+            /* busy 提到 memcpy 之前（审查 N-8 / §9.4 第 8 条）：原来「先拷贝、后置 busy」，
+             * CPU0 的忙等正好盖不住这段拷贝 —— 拷贝进行中 CPU0 已在往 image_copy 里写下一帧，
+             * 拷出来的就是前后两帧拼起来的撕裂图。现在 busy 覆盖「拷贝 + 发送」全程，
+             * CPU0 见到 busy=1 就不会再动 image_copy；copy_flag 在拷贝完成后清零，
+             * 下一步要等新的 250 帧才再次进入这里，时机不会再撞上 CPU0 的写。 */
+            busy=1;
             memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
 
             copy_flag=0;
-            busy=1;
             seekfree_assistant_camera_send(&camera_obj);
             busy=0;
         }

@@ -12,6 +12,9 @@
 #define MAX_SPEED 1000              // 电机最大占空比，逐飞库限幅 0~10000
 #define START_TIME 30000000         // 软启动时长 0.3 s，system_getval 单位为 10 ns
 #define ZU_SE_ZHEN_SHU 250          // CPU1 每累计多少帧发送一次图传
+                                    // 注意图传本身不实时：一帧 22560 B，115200 8N1 约 2.0 s 才发完，
+                                    // 250 帧（约 5 s）攒一次再花 2 s 发，等于约 5 s 一帧画面。
+                                    // 想边跑边看图就接 USB/WiFi 模块改更高波特率，别靠改这个宏。
 #define SLOW_DOWN_DIV 10            // 断流保护（摄像头 0.5 s 无新帧）降速除数，实际速度为 MAX_SPEED / SLOW_DOWN_DIV
                                     // 注意：单帧丢线已改为「记忆 + 缓降」，不再直接用这个除数，见第四节 DIU_XIAN_*
 
@@ -48,6 +51,19 @@
 #define FAIL_RECENT_MAX 1000        // 失败窗口累计上限，防 uint16 溢出
 #define CONSIST_FAIL_MAX 5          // 允许回退上一帧旧图的最大连续失败帧数
 
+/* --- 二值化可信度与极性（2026-11-09 对抗审查 N-2 / N-3 / P2-5） --- */
+#define ZHI_XIN_DU 0.45f            // 大津法置信度门限 = 类间方差 / 总方差。原 0.6 对正常赛道（白线占 10%）偏高，
+                                    // 会把好帧判成失败、退化成回退图或硬阈值（审查 N-3）。误判丢线多就再降 0.05，
+                                    // 噪声帧被当有效帧（err 乱跳）就往上加。
+#define ZUI_XIAO_DUI_BI_DU 20       // 最小绝对对比度 maxn-minn。低于此值判本帧没有有效黑白分界，
+                                    // 不管置信度多高都不采纳：全黑/全白/低对比帧的类间方差仍可能很高，光看置信度拦不住。
+#define FAN_SE_BAI_BI 60            // 白点占比超过此百分比才认定极性反了并整帧取反。原 50% 门限在
+                                    // 白墙、白斑、大面积反光下会误反色，反色后「背景」被当成线，打舵直接反（审查 P2-5）。
+#define FAN_SE_ZUI_DA_KUAN_DU 150   // 反色帧允许的最大双边线宽度（像素）。白墙误反色时「线」= 整幅背景，
+                                    // 宽度会顶到 187，主循环据此判丢线，不去追这面墙。
+#define LUO_HOU_JIANG_SU_PCT 25     // 回退旧图（image_lag=1）时的速度下调百分比：图像最多老 5 帧（约 100 ms），
+                                    // 按原速冲这一段最容易出赛道，先降速换时间。
+
 /* --- 丢线记忆 + 缓降（报告 §5.1） --- */
 #define DIU_XIAN_JIAN_SU 4          // 丢线后每帧速度衰减百分比（%）。一帧约 20 ms，4% 约 0.5 s 掉到一半，
                                     // 丢线后还想多冲一点就调小（2~3），想快点贴地就调大（6~8）
@@ -81,10 +97,15 @@
 #define TURN_PWM_YOU            ATOM0_CH6_P02_6     // 右电机 PWM：P02.6（ATOM0_CH6）
 #define TURN_DIR_ZUO            P02_5               // 左电机方向：P02.5（DRV8701E 的 IN2，普通 GPIO）
 #define TURN_DIR_YOU            P02_7               // 右电机方向：P02.7（DRV8701E 的 IN2，普通 GPIO）
-#define TURN_ENCODER_ZUO        TIM4_ENCODER        // 左轮编码器 TIM4: P02_8(A)/P33_5(B)，也可把 B 换 P00_9
+#define TURN_ENCODER_ZUO        TIM4_ENCODER        // 左轮编码器 TIM4: P02_8(A)/P00_9(B)，B 也可换 P33_5
                                                     // 原来是 TIM5(P21_7/P21_6)：T5 属 GPT2，没有增量接口模式，
                                                     // encoder_quad_init 的 zf_assert 会直接死等，见 motor.c 注释
 #define TURN_ENCODER_YOU        TIM2_ENCODER        // 右轮编码器 TIM2: P33_7(A)/P33_6(B)
+                                                    // ★左右轮编码器极性必须一致（审查 N-10）：TIM4 与 TIM2 的计数方向
+                                                    // 取决于 A/B 相接线顺序，接反了一个轮「前进」是负脉冲。
+                                                    // 标定：把车推着往前走，看 motor_speed_pulse(0)/motor_speed_pulse(1)
+                                                    // 是否同号；一正一负就把那一轮的 A/B 两根线对调（软件改计数符号也行，
+                                                    // 但要同时在 motor.c 和 turn() 里改，别只改一处）。
 #define TURN_FANG_XIANG         1                   // 转向极性：+1 = 正角度右转；实车相反改 -1
 #define TURN_STEER_DUTY         250                 // 舵机相对 SERVO_CENTER 的偏置，配合 TURN_ZUI_DA_ZHUAN_JIAO_DU 一起调
                                                     // 注意两套舵机坐标系：巡线 delta 限幅 ±DELTA_LIMIT(150)，转弯这里 ±250。
@@ -118,6 +139,10 @@
 #define TURN_DU_ZHUAN_ZHI       3       // 窗口内两轮平均脉冲低于此值判堵转
 #define TURN_CHA_PI_KP          3       // 弧度差环比例：每差 1 个「每度脉冲」给几档占空比
 #define TURN_CHA_PI_KI          1       // 弧度差环积分
+/* 注意：2026-11-09 修正了差速环的量纲（审查 P0-1）：原来 xi_wang_cha = 每毫米脉冲 × 轮距，
+ * 少了「度→弧度」换算，期望值被放大 180/π ≈ 57 倍，PI 长期顶在饱和值上，看着能转其实是恒定偏置。
+ * 修正后误差单位统一成「每度脉冲差」（典型量级 145），上面两个增益保持原值即可有相近权感，
+ * 但首次上车必须重新整定：先 KP 单独加到「外轮明显比内轮快」不抖，再加 KI。 */
 #define TURN_CHA_PI_JI_FEN_SHANG_XIAN 400   // 积分限幅（单位：每度脉冲）
 
 /* --- 6.5 时序与保护 --- */
@@ -134,6 +159,8 @@
 #define TURN_LENG_QUE_ZHEN      18      // 转弯收尾后的舵机冷却帧数，一帧约 20 ms，18 帧≈0.36 s。
                                         // 期间 control() 强制回中直行，防止旧 err 把刚转过来的车头掰回去。
                                         // 转完还需要往前抢一段就把值调大（25~30），转完立刻要进弯就调小（8~10）。
+                                        // 注意：本参数目前【不生效】：turn() 只在 TURN_TAI_JIAN_CE_SHI 台架自检里被调用，
+                                        // 生产构建没有调用点（审查 N-9）。等把 turn() 真正接进巡线流程，它才开始起作用。
 
 /* 台架验收三步
  * ① 两轮都悬空，turn(90)：左右轮都朝同一方向、外轮明显更快；看 turn_shi_ji_ban_jing 是否接近 L/tan(d)。

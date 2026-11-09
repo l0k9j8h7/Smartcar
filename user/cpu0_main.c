@@ -188,21 +188,32 @@ int core0_main (void)
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
             memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
-            //seekfree_assistant_camera_send(&camera_obj);   //发送寻找图像帧（发的是刚拷好的副本）
-            copy_flag++;
             last_frame = now_ticks;
 
-            // 图传忙等加超时：CPU1 卡在串口不置 busy 时不再永久阻塞 CPU0
-            uint32 wait_start = system_getval();    // 忙等计时起点，单位 10 ns
-            while (copy_flag >= ZU_SE_ZHEN_SHU && !busy
-                    && (system_getval() - wait_start) < TU_CHUAN_CHAO_SHI)
-            {
-                //wait（最多 50 ms）
-            }
-            if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
-                copy_flag = 0;   // 超时兜底：放弃本帧图传，避免下一帧重复等待
-
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
+
+            /* ---------------- 图传握手（审查 §9.4 第 8 条 / N-8） ----------------
+             * 顺序是本次改的：先处理完，再自增 copy_flag。
+             * 原来 copy_flag++ 在 double_value() 之前，CPU1 一拿到信号就 memcpy(image_copy)，
+             * 而 CPU0 正在就地把 image_copy 二值化 —— 两边同时读写同一块缓冲区，
+             * 图传里会看到半帧灰度、半帧二值化的撕裂画面，严重时干脆脏帧。
+             * 现在 CPU1 拷到的永远是「处理完的整帧」；busy 由 CPU1 在 memcpy 之前置位、
+             * 发完之后清（见 cpu1_main.c），所以下面这段忙等正好盖住拷贝窗口，才是有效保护。
+             * 耗时口径：一帧 22 560 B / 115200 8N1 ≈ 2.0 s，ZU_SE_ZHEN_SHU=250 帧约 5 s 攒一次，
+             * 即图传约 5 s 一帧，不是实时画面；要更实时只能提高波特率或减小帧尺寸。 */
+            copy_flag++;
+            if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
+            {
+                uint32 wait_start = system_getval();    // 忙等计时起点，单位 10 ns
+                while (copy_flag >= ZU_SE_ZHEN_SHU && !busy
+                        && (system_getval() - wait_start) < TU_CHUAN_CHAO_SHI)
+                {
+                    //wait（最多 50 ms）
+                }
+                if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
+                    copy_flag = 0;   // 超时兜底：放弃本帧图传，避免下一帧重复等待
+            }
+
             if (!image_valid)                   // 二值化已判不可信（连续失败/硬阈值回退），白线大概率已丢，不再拿它算 err
             {
                 control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
@@ -225,7 +236,11 @@ int core0_main (void)
             float x1 = qing_xie_du(x, image_copy);
             int lline = (x >> 8) & 0xFF; /* 左边界列 0~187 */
             int rline = x & 0xFF; /* 右边界列 0~187 */
-            if (x < 0 || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX)
+            /* 反色帧兜底（审查 N-2 / P2-5）：白墙、白斑、大面积反光会把极性校正骗去整帧取反，
+             * 取反后「线」其实是整幅背景，宽度顶到 188，err 反而变好看（≈0），车会顺着墙跑。
+             * 所以反色帧的赛道宽度超过 FAN_SE_ZUI_DA_KUAN_DU 就按丢线处理，不去追这面墙。 */
+            if (x < 0 || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX
+                    || (image_fan_se && (rline - lline) > FAN_SE_ZUI_DA_KUAN_DU))
             {
                 control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
                 pid_reset();
@@ -237,8 +252,15 @@ int core0_main (void)
                 delta = DELTA_LIMIT;
             if (delta < -DELTA_LIMIT)
                 delta = -DELTA_LIMIT;
-            diu_xian_ji_yi((int16)delta, MAX_SPEED);         // 记住这一帧，万一下一帧丢线就靠它接管
-            control(ticks, (int16) (delta), MAX_SPEED);
+            /* 落后帧降速（审查 N-2）：image_lag=1 表示这帧边线来自上一帧旧图（最多老 5 帧、约 100 ms），
+             * 按原速冲这 100 ms 正好是出赛道的高发段，先按 LUO_HOU_JIANG_SU_PCT 降速换反应时间；
+             * 同时不刷新丢线记忆 —— 记忆必须是「新数据」算出来的，否则丢线时接管的是过期偏置。 */
+            int su_du = MAX_SPEED;
+            if (image_lag)
+                su_du = MAX_SPEED * (100 - LUO_HOU_JIANG_SU_PCT) / 100;
+            else
+                diu_xian_ji_yi((int16)delta, su_du);         // 记住这一帧，万一下一帧丢线就靠它接管
+            control(ticks, (int16) (delta), su_du);
         }
     }
 }

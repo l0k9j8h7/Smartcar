@@ -20,12 +20,19 @@
 // Ñ­»·ÀïµÄ s1[k]/s2[k] ³£Á¿ÕÛµş³É¹Ì¶¨Æ«ÒÆ£¬»İ¼° 9 ÁÚÓòÈ¥ÔëÓëÁ½´¦ BFS ÈÈÑ­»·
 static const int8 s1[9] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 static const int8 s2[9] = {-1, -1, -1, 0, 0, 0, 1, 1, 1};
+/* ÉÏÒ»Ö¡¶şÖµ»¯½á¹û£¨22 560 B£©¡£Ö»±» CPU0 µÄ double_value() ¶ÁĞ´£¬ÏÔÊ½·Å½ø cpu0_dsram£º
+ * ¼ÈÊ¡ SRI ·ÃÎÊ£¬Ò²±ÜÃâºÍ CPU1 µÄ copy »º³åÇøÂäÔÚÍ¬Ò»¿éÎïÀíÇø£¨Éó²é ¡ì9.4 µÚ 7 Ìõ / ±¨¸æ P2-2£©¡£ */
+#pragma section all "cpu0_dsram"
 uint8 last_image_copy[MT9V03X_H][MT9V03X_W];
+#pragma section all restore
 static int rowmap[256], colmap[256]; //Ô¤¼ÆËãÓ³Éä±í
 
 uint8 last_image_exist = 0;
+uint8 image_fan_se = 0;     // ±¾Ö¡ÊÇ·ñ±»¼«ĞÔĞ£ÕıÕûÖ¡È¡·´£¨1 = ÒÑ·´É«£©¡£Ö÷Ñ­»·ÓÃËüÇø·Ö¡¸·´É«³¡µØ¡¹£¬
+                            // ±ÜÃâ°ÑÎó·´É«³öÀ´µÄ±³¾°µ±ÈüµÀ£¨Éó²é N-2 / P2-5£©
+uint8 image_lag = 0;        // ±¾Ö¡ÊÇ·ñ»ØÍËÓÃÁËÉÏÒ»Ö¡¾ÉÍ¼£¨1 = ÂäºóÖ¡£©¡£Ö÷Ñ­»·¾İ´Ë½µËÙ£¨Éó²é N-2£©
 float now_zhi_xin_du = 0;
-float zhi_xin_du = 0.6;
+float zhi_xin_du = ZHI_XIN_DU;   // ÃÅÏŞ¼¯ÖĞÔÚ tiaocan.h£¬Ô­ 0.6 Æ«¸ß¼ûÉó²é N-3
 typedef struct
 {
     int16 n;   // ¶©Õı±¨¸æ P2-2£ºimage_init Êµ²âÖµÓò 0~252£¬int8 »áÒç³ö£¬¹ÊÊÕÕ­Îª int16 ¶ø·Ç int8
@@ -149,27 +156,24 @@ static inline uint8 to_uint8 (int32 tmp)
 /* ¼«ĞÔ×ÔĞ£Õı£¨251e810 ±¨¸æ ¡ì7.4 µÚ 1 Ìõ¡¸·´É«È±Ê§¡¹£¬P0£©
  * ÉÏÃæ¶şÖµ»¯Ö»°Ñ¡¸±ÈãĞÖµÁÁ¡¹µÄÏñËØĞ´³É 255¡£°×µ×ºÚÏßÊÇ³£¹æÈüµÀ£¬ÕâÑùĞ´³öÀ´ÊÇ±³¾°°×¡¢
  * ÏßºÚ£¬¶ø find_line °Ñ·Ç 0 µ±Ïß£¬µÈÓÚÕûÖ¡ÄÃ±³¾°µ±Ïß£»ºÚµ×°×ÏßÓÖÏà·´¡£ÕâÀï²»Ô¤Éè³¡µØ
- * ¼«ĞÔ£¬Ö±½ÓÊı°×µã£º°×É«¹ı°ëËµÃ÷ 255 ÊÇ±³¾°£¬ÕûÖ¡È¡·´£¬±£Ö¤¡¸Ïß = 255¡¹ÕâÌõÈ«Á´Â·Ô¼¶¨
- * ÔÚÈÎºÎ³¡µØ¶¼³ÉÁ¢¡£Õı³£°×Ïß³¡¾°°×É«Õ¼±ÈÔ¶µÍÓÚÒ»°ë£¬²»»áÎó´¥·¢¡£ */
-static void baise_jiao_zheng (uint8_t image[][MT9V03X_W])
+ * ¼«ĞÔ£¬Êı°×µã£º°×É«Õ¼±È³¬¹ı FAN_SE_BAI_BI ¾ÍÕûÖ¡È¡·´£¬±£Ö¤¡¸Ïß = 255¡¹ÕâÌõÈ«Á´Â·Ô¼¶¨¡£
+ *
+ * 2026-11-09 ¶Ô¿¹Éó²éÁ½´¦¸Ä¶¯£º
+ *   1) °×µã¼ÆÊı²¢Èë¶şÖµ»¯µÄĞ´»ØÑ­»·£¨Ô­À´ÕâÀïÔÙÉ¨Ò»±éÈ«Í¼£¬Õ¼ÕûÖ¡ 6% ×óÓÒ£¬Êô°×ËÍµÄºÄÊ±£©£»
+ *   2) ÃÅÏŞÓÉ¡¸¹ı°ë¡¹Ìáµ½ FAN_SE_BAI_BI(60%)£¬²¢ÖÃ image_fan_se Ö¡¼¶±êÖ¾¡£Ô­ 50% ÃÅÏŞÔÚ°×Ç½¡¢
+ *      °×°ß¡¢´óÃæ»ı·´¹âÏÂ»áÎó·´É«£¬·´É«ºó°Ñ±³¾°µ±³ÉÏß£¬´ò¶æÖ±½Ó·´£¨Éó²é P2-5 / N-2£©¡£ */
+static void baise_jiao_zheng (uint8_t image[][MT9V03X_W], uint32 bai)
 {
-    uint32 bai  = 0;
     uint32 zong = (uint32)MT9V03X_H * (uint32)MT9V03X_W;
-    for (int i = 0; i < MT9V03X_H; i++)
-    {
-        for (int j = 0; j < MT9V03X_W; j++)
-        {
-            if (image[i][j])
-                bai++;
-        }
-    }
-    if (bai * 2 <= zong)
-        return;                                     // °×É«²»¹ı°ë£ºÏß¾ÍÊÇ°×É«£¬¶şÖµ»¯½á¹ûÖ±½ÓÓÃ
+    image_fan_se = 0;
+    if (bai * 100 <= zong * FAN_SE_BAI_BI)
+        return;                                     // °×É«Õ¼±ÈÃ»µ½ÃÅÏŞ£ºÏß¾ÍÊÇ°×É«£¬¶şÖµ»¯½á¹ûÖ±½ÓÓÃ
     for (int i = 0; i < MT9V03X_H; i++)
     {
         for (int j = 0; j < MT9V03X_W; j++)
             image[i][j] = (uint8)(image[i][j] ? 0 : 255);
     }
+    image_fan_se = 1;                               // ¸æËßÖ÷Ñ­»·¡¸±¾Ö¡ÊÇ·´É«Ö¡¡¹£¬¼û cpu0_main.c
 }
 
 int64 consist_fail = 0;
@@ -178,6 +182,13 @@ uint16 fail_recent = 0;         // ×î½ü´°¿ÚÄÚ¶şÖµ»¯Ê§°ÜÀÛ¼Æ£º³É¹¦Ö¡Ö»Ë¥¼õ²»ÇåÁã£
 int16 fen_kuai_bu_chang[3][4] = {{0}};    //65536 max
 int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float zhi_xin_du)
 {   //´ó½ò·¨£ºÔ­ÊµÏÖÃ¿¸öãĞÖµ¶¼´ÓÍ·ÀÛ¼ÓÖ±·½Í¼£¬ÊÇ O(256^2)£»¸ÄÎª¹ö¶¯Ç°×ººÍ O(256)£¨±¨¸æ P1-5£©
+    /* ¾ø¶Ô¶Ô±È¶ÈÃÅÏŞ£¨¶Ô¿¹Éó²é N-3 µÄ·´Ïò·çÏÕ£©£ºÈ«ºÚ¡¢È«°×¡¢µÍ¶Ô±ÈÖ¡µÄÀà¼ä·½²îÕ¼±ÈÕÕÑùÄÜµ½
+     * 0.9 ÒÔÉÏ£¬Ö»¿¿ÖÃĞÅ¶ÈÀ¹²»×¡£¬±ØĞëÔÙ¼ÓÒ»µÀ¡¸±¾Ö¡µ½µ×ÓĞÃ»ÓĞºÚ°×·Ö½ç¡¹µÄÓ²Ìõ¼ş¡£ */
+    if (maxn - minn < ZUI_XIAO_DUI_BI_DU)
+    {
+        now_zhi_xin_du = 0;
+        return -1;
+    }
     int16 best_value = -1;
     float fangcha = 0;
     uint32 total_w = 0;         // ĞÂÔö£º²ÎÓë·ÖÀàµÄ×ÜÏñËØÊı£¬ÓÃÓÚ°ÑÀà¼ä·½²î¹éÒ»»¯µ½ 0~1 Á¿¼¶
@@ -212,10 +223,16 @@ int16 da_jin_fa (int minn, int maxn, uint16 huidu[], float zong_fang_cha, float 
     return fangcha > zong_fang_cha * zhi_xin_du ? best_value : -1; //<0.6²»²ÉÄÉ£¬¸Ã·½²î²»Òª³ıÒÔscale
 }
 
+/* Ö±·½Í¼Å²µ½ static£¨Éó²é ¡ì9.4 µÚ 6 Ìõ / ±¨¸æ P2-3£©£ºhuidu[259] + kuai_nei_huidu[256] ºÏÆğÀ´ 1 KB ³öÍ·£¬
+ * ¶ø TC264 µÄ ustack0 Ö»ÓĞ 2 KB£¬Á½²ãÒ»µş¾Í³Ôµô°ë¸öÕ»¡£double_value() Ö»ÔÚ CPU0 Ö÷Ñ­»·Àïµ¥Ïß³Ìµ÷ÓÃ£¬
+ * ²»´æÔÚÖØÈë£¬¸Ä³É static + ½øº¯ÊıÏÔÊ½ÇåÁãÓëÔ­Ğ´·¨µÈ¼Û£¬µ«Ê¡ÏÂ 1 KB Õ»¡£ */
+static uint16 huidu[259];
+static int16  kuai_nei_huidu[256];
+
 void double_value (uint8_t image[][MT9V03X_W])
 { //¶şÖµ»¯
 
-    uint16 huidu[259] = {0}; //¿í/¸ß/ÏñËØÖÖÀà
+    memset(huidu, 0, sizeof(huidu)); //¿í/¸ß/ÏñËØÖÖÀà
 
     uint32 scale = MT9V03X_H * MT9V03X_W;
     uint8 minn = 255, maxn = 0;
@@ -282,7 +299,7 @@ void double_value (uint8_t image[][MT9V03X_W])
     {
         for (int j = 0; j < 4; j++)
         {
-            int16 kuai_nei_huidu[256] = {0};                 //¿éÄÚ»Ò¶È
+            memset(kuai_nei_huidu, 0, sizeof(kuai_nei_huidu)); //¿éÄÚ»Ò¶È£¨static£¬Ã¿´Î½øÀ´ÏÈÇåÁã£©
             uint8 minn = 255, maxn = 0;
             for (int k1 = 0; k1 < 40; k1++)
             {
@@ -365,19 +382,23 @@ void double_value (uint8_t image[][MT9V03X_W])
     fa_zhi = da_jin_fa(minn, maxn, huidu, fangcha, zhi_xin_du);
     if (fa_zhi >= 0)
     {
+        uint32 bai = 0;                                     // °×µã¼ÆÊı²¢ÈëĞ´»ØÑ­»·£¬Ê¡µô¼«ĞÔĞ£ÕıµÄ¶ÀÁ¢É¨Ãè
         for (int i = 0; i < MT9V03X_H; i++)
         {
             for (int j = 0; j < MT9V03X_W; j++)
             {
 
                 image[i][j] = image[i][j] > fa_zhi ? 255 : 0;
+                if (image[i][j])
+                    bai++;
 
             }
         }
-        baise_jiao_zheng(image);                            // ¼«ĞÔĞ£ÕıºóÔÙ±¸·İ£¬»ØÍËÍ¼Óëµ±Ç°Ö¡¿Ú¾¶Ò»ÖÂ
+        baise_jiao_zheng(image, bai);                       // ¼«ĞÔĞ£ÕıºóÔÙ±¸·İ£¬»ØÍËÍ¼Óëµ±Ç°Ö¡¿Ú¾¶Ò»ÖÂ
         memcpy(last_image_copy, image, MT9V03X_IMAGE_SIZE); // ´Ë¿Ì DMA ÒÑ disable£¬µ½ÏÂÒ»¸ö VSYNC Ç° mt9v03x_image ²»»á±»Ğ´
         last_image_exist = 1;
         consist_fail = 0;
+        image_lag = 0;                                      // ±¾Ö¡ÊÇĞÂÍ¼
         if (fail_recent > 0)
             fail_recent -= FAIL_RECENT_DECAY;                       // ³É¹¦Ö¡Ö»Ë¥¼õ²»ÇåÁã£ºÕâÑù¡¸³É¹¦/Ê§°Ü½»Ìæ¡¹Ò²ÄÜÀÛ¼Æµ½±£»¤ãĞÖµ
         image_valid = (fail_recent < FAIL_RECENT_LIMIT) ? 1 : 0;
@@ -392,20 +413,28 @@ void double_value (uint8_t image[][MT9V03X_W])
         {
             memcpy(image, last_image_copy, MT9V03X_IMAGE_SIZE);
             image_valid = (fail_recent < FAIL_RECENT_LIMIT) ? 1 : 0;   // ¶ÌÆÚ»ØÍË¾ÉÍ¼ÈÔ¿ÉÓÃ£¬µ«Ê§°Ü¹ıÃÜ¾Í²»ÔÙĞÅÈÎ
+            /* »ØÍËµÄÊÇ¾ÉÍ¼£¬Ö÷Ñ­»·±ØĞëÖªµÀ¡¸ÕâÒ»Ö¡ÊÇÀÏµÄ¡¹£¨Éó²é N-2£©£ºÔ­À´ÕâÀïÖ»Çå image_valid£¬
+             * µ¥Ö¡Ëæ»úÊ§°ÜÊ±ËüÈÔÎª 1£¬Ö÷Ñ­»·ÄÃ×î¶à 5 Ö¡Ç°£¨Ô¼ 100 ms£©µÄ±ßÏßµ±ĞÂÊı¾İÓÃ£¬
+             * ¸ßËÙÊ±±íÏÖ¾ÍÊÇ¡¸¿´×ÅÓĞÏß£¬ÆäÊµÔç¶ªÁË 20 ms¡¹¡£ÖÃ image_lag ÈÃÖ÷Ñ­»·½µËÙ¡£ */
+            image_lag = 1;
         }
         else
         {
+            uint32 bai = 0;
             for (int i = 0; i < MT9V03X_H; i++)
             {
                 for (int j = 0; j < MT9V03X_W; j++)
                 {
 
                     image[i][j] = image[i][j] > (maxn + minn) / 2 ? 255 : 0;
+                    if (image[i][j])
+                        bai++;
 
                 }
             }
-            baise_jiao_zheng(image);                        // Ó²ãĞÖµÍ¬ÑùÒª×ß¼«ĞÔĞ£Õı£¬·ñÔò¶ªÏßÖ¡µÄ¡¸Ïß¡¹»¹ÊÇ±³¾°
+            baise_jiao_zheng(image, bai);                   // Ó²ãĞÖµÍ¬ÑùÒª×ß¼«ĞÔĞ£Õı£¬·ñÔò¶ªÏßÖ¡µÄ¡¸Ïß¡¹»¹ÊÇ±³¾°
             image_valid = 0;                    // Á¬ĞøÊ§°Ü ¡İ6 Ö¡¸ÄÓÃÓ²ãĞÖµ£¬°×Ïß»ù±¾È«¶ª£¬Ã÷È·ÅĞ²»¿ÉĞÅ
+            image_lag = 0;                      // Í¼ÊÇĞÂµÄ£¬Ö»ÊÇ²»¿ÉĞÅ£º¿¿ image_valid=0 ×ß¶ªÏß·ÖÖ§
         }
     }
 }
@@ -480,6 +509,12 @@ void xiao_qu_yu_shan_chu (uint8_t image[][MT9V03X_W])
 int16 last_l_line = -1;          // ÉÏÒ»Ö¡ÓĞĞ§×ó±ßÏßÁĞ£¬ÓÃÓÚµ¥±ßÏßÊ±ÅĞ¶ÏÕâÌõÏßÊôÓÚÄÄÒ»²à
 int16 last_r_line = -1;          // ÉÏÒ»Ö¡ÓĞĞ§ÓÒ±ßÏßÁĞ£¬ÓÃÓÚµ¥±ßÏßÊ±ÅĞ¶ÏÕâÌõÏßÊôÓÚÄÄÒ»²à
 int16 last_lr_width = -1;        // ÉÏÒ»Ö¡ÓĞĞ§ÈüµÀ¿í¶È£¨ÓÒ-×ó£©£¬-1 ±íÊ¾ÉĞÎŞÀúÊ·£¬´ËÊ±²»²Â±ßÏß
+/* ±àÒëÆÚ¶ÏÑÔ£¨Éó²é ¡ì9.4 µÚ 0 Ìõ£©£ºfind_line µÄ·µ»ØÖµÊÇ´ò°üÖµ (×óÁĞ << 8) + ÓÒÁĞ¡£
+ * MT9V03X_W = 188 Ê±×î´ó 187¡Á256 + 187 = 48,059£¬Ô¶³¬ int16 ÉÏÏŞ 32,767 ¡ª¡ª ËüÌìÉú×°²»½ø 16 Î»£¬
+ * ËùÒÔ·µ»ØÀàĞÍ¡¢µ÷ÓÃ·½½ÓÊÕ±äÁ¿¡¢½â°ü±äÁ¿¶¼±ØĞëÊÇ int32£¨cpu0_main.c ÀïÊÇ int32 x£©¡£
+ * Éó²é±¨¸æÀï¡¸¸Ä³É int16 Ê¡¼Ä´æÆ÷¡¹µÄĞŞ·¨»áÔÚÕâÀïÖ±½ÓÒç³ö£ºÓÒÆ«ÈüµÀ£¨×óÁĞ ¡İ 128£©·­³É¸ºÊı£¬
+ * ±ÈÏÖ×´¸üÔã¡£ÕæÒªÊ¡¿í¶È£¬Ö»ÄÜ¸Ä³É·Ö¿ª³ö²Î£¨×ó¡¢ÓÒ¸÷Ò»¸öÖ¸Õë£©£¬²»ÄÜÑ¹ËõÕâ¸ö´ò°üÖµ¡£ */
+typedef char find_line_fan_hui_zhi_bi_xu_int32[(sizeof(int32) == 4) ? 1 : -1];
 int32 find_line (uint8_t image[][MT9V03X_W], int height)
 { //·µ»Ø·½ÏòÖµ(delta1)
     int sum1 = 0, sum2 = 0, max1 = 0, max2 = 0;

@@ -140,7 +140,7 @@ static void turn_tuo_zhan (int32 cc_l, int32 cc_r)
 int16 turn (int16 degrees)
 {
     int16  shang_ci[2];         // 上一轮采样，用于求增量
-    int16  qi_shi[2];           // 本窗口起点累计（int16 专为 16 位计数器老化回绕设计，差值运算安全）
+    int32  qi_shi[2];           // 本窗口起点累计（必须 int32，见下）
     int16  bu;
     int16  fang_xiang;
     int16  jiao_du;
@@ -151,12 +151,12 @@ int16 turn (int16 degrees)
     float  mei_du_ping_jun;     // 每度「两轮平均」脉冲（R=409 时约 537；必须浮点，取整会吃精度）
     float  mu_biao_jiao;        // 目标转角（度）
     float  yi_zou_chong;        // 两轮平均里程（脉冲）
-    float  ban_jing_bi;         // 目标半径 / 实测半径，限幅 0.5~1.5
+    float  ban_jing_bi;         // 目标半径 / 实测半径，限幅 0.7~1.3
     float  yi_zou_jiao;         // 已走角度（按实测半径折算，浮点比较，不做整数折算）
-    float  xi_wang_cha;         // 期望：每度左右的弧度差（脉冲）
-    int32  cha_pi;              // 本窗口左右轮「每度弧度差」的 PI 修正量，单位：占空比
-    int32  cha_pi_jifen;
-    int32  shi_ji_cha;          // 实测：本窗口左右轮弧度差 / 窗口内的角度增量
+    float  xi_wang_cha;         // 期望：每度「外轮 - 内轮」脉冲差
+    float  cha_pi;              // 本窗口差速 PI 修正量，单位：占空比
+    float  cha_pi_jifen;        // 积分项
+    float  shi_ji_cha;          // 实测：每度「外轮 - 内轮」脉冲差
     int32  shi_ji_ban_jing;
     int32  cc_wai;
     int32  cc_nei;
@@ -209,7 +209,12 @@ int16 turn (int16 degrees)
     mei_mm_chong = (float)TURN_MEI_LUN_QUAN_CHONG_MEI_DU / (float)TURN_LUN_ZHOU_MM;
 
     /* ---- 左右轮每度脉冲差，用浮点算，避免整数截断把小量吃成 0 ---- */
-    xi_wang_cha  = mei_mm_chong * (float)TURN_LUN_JU_MM;          // (T/R)×每度脉冲，R 已折在下面
+    /* 期望「每度外轮 - 内轮脉冲差」= 轮距弧长 × 每毫米脉冲 = T × (π/180) × 每毫米脉冲。
+     * 原来这一行少了 (π/180)：算出 8282（其实单位是「脉冲/mm × mm」，根本不是「每度」），
+     * 比正确值大约 57 倍，误差项长期顶在饱和值上，PI 变成恒定偏置 —— 台架上方向对、看着也准，
+     * 但闭环从来没闭合过（审查 P0-1，数值 8282 与源码一致）。
+     * 注意：别按审查报告那一版改成 (int32)(×1000) 定点：那只是把增益砍到 1/8，不是修量纲。 */
+    xi_wang_cha  = mei_mm_chong * (float)TURN_LUN_JU_MM * 3.14159265f / 180.0f;
     /* 两轮平均里程（每度）：车身沿半径 R 前进的弧长 -> 脉冲。
      * 平均弧长 = R × (pi/180)，不是内轮弧长；差速环自己管左右分配，这里只管总量。 */
     mei_du_ping_jun = mei_mm_chong * (float)ban_jing * 3.14159265f / 180.0f;
@@ -278,10 +283,12 @@ int16 turn (int16 degrees)
         {
             ban_jing_ce = ban_jing;
         }
-        /* 比值夹在 0.5~1.5：起步/打滑瞬间算出的离谱半径会把角度算小，那会一直转不停 */
+        /* 比值夹在 0.7~1.3（原来 0.5~1.5）：打滑 33% 时实测半径偏小，比值顶到 1.5，角度直接算少 33%，
+         * 车就转不到位（审查 P0-1 补充项）。夹窄到 ±30% 等于「最多容忍 30% 打滑」，
+         * 超出部分交给上面那段 2× 判据退回目标半径，别靠放宽夹持去兜。 */
         ban_jing_bi = (float)ban_jing / (float)ban_jing_ce;
-        if (ban_jing_bi < 0.5f) ban_jing_bi = 0.5f;
-        if (ban_jing_bi > 1.5f) ban_jing_bi = 1.5f;
+        if (ban_jing_bi < 0.7f) ban_jing_bi = 0.7f;
+        if (ban_jing_bi > 1.3f) ban_jing_bi = 1.3f;
 
         /* 全程用浮点比较，不折算成整数角度：
          * 一旦把已走角度取整，低车速时每步的增量不到 1 度，截断后剩余量永远差一点，
@@ -320,13 +327,31 @@ int16 turn (int16 degrees)
             d_zeng = (int32)((turn_lei_ji_chong[0] - qi_shi[0]) + (turn_lei_ji_chong[1] - qi_shi[1])) / 2;
             if (d_zeng < 1) d_zeng = 1;                            // 防除零，堵转由下面的速率判据兜底
 
-            shi_ji_cha = ((turn_lei_ji_chong[1] - qi_shi[1]) - (turn_lei_ji_chong[0] - qi_shi[0]))
-                       * 1000 / d_zeng;                            // ×1000 保留精度
-            cha_pi_jifen += ((int32)(xi_wang_cha * 1000.0f) - shi_ji_cha) / 8;   // 外轮走少了 -> 正 -> 外轮加压
-            if (cha_pi_jifen >  TURN_CHA_PI_JI_FEN_SHANG_XIAN) cha_pi_jifen =  TURN_CHA_PI_JI_FEN_SHANG_XIAN;
-            if (cha_pi_jifen < -TURN_CHA_PI_JI_FEN_SHANG_XIAN) cha_pi_jifen = -TURN_CHA_PI_JI_FEN_SHANG_XIAN;
-            cha_pi = (((int32)(xi_wang_cha * 1000.0f) - shi_ji_cha) / 1000 * TURN_CHA_PI_KP
-                      + cha_pi_jifen * TURN_CHA_PI_KI) / 1000;
+            /* 实测「每度外轮 - 内轮脉冲差」：先把窗口里程折成角度，再算差，与 xi_wang_cha 同量纲。
+             * 符号统一成「外轮 - 内轮」：右转外轮是左轮、左转外轮是右轮，两边都取正值，
+             * 「外轮走少了」永远是同一个方向。原写法固定用「右 - 左」，右转时误差自带
+             * 约 2×145 的恒定正偏置，方向对了也永远调不平（审查 P0-1 的另一半）。 */
+            {
+                float ce_du  = (float)d_zeng / mei_du_ping_jun;                  // 本窗口走过的角度（度）
+                float ce_zuo = (float)(turn_lei_ji_chong[0] - qi_shi[0]);        // 左轮增量
+                float ce_you = (float)(turn_lei_ji_chong[1] - qi_shi[1]);        // 右轮增量
+                float ce_cha = (fang_xiang > 0) ? (ce_zuo - ce_you) : (ce_you - ce_zuo);
+                shi_ji_cha = (ce_du > 0.001f) ? (ce_cha / ce_du) : xi_wang_cha;  // 太小就按期望值处理，别除爆
+            }
+
+            /* 积分按窗口时间归一化（审查 N-6）：原来每窗固定 /8，等于把积分增益和窗口长度绑死，
+             * 改 TURN_CE_SU_WIN_MS 就悄悄改增益、窗口一大就过冲失稳。这里按「标称窗口 / 实际窗口」
+             * 折算，标称窗口下与原行为等价，改窗口只影响采样率、不影响等效积分时间。 */
+            {
+                float dt_ms  = (float)dt / 100000.0f;                            // dt 单位 10 ns
+                float win_bi = (dt_ms > 0.001f) ? ((float)TURN_CE_SU_WIN_MS / dt_ms) : 1.0f;
+                float wu_cha = xi_wang_cha - shi_ji_cha;                         // 外轮走少了 -> 正 -> 外轮加压
+                cha_pi_jifen += wu_cha * win_bi / 8.0f;
+            }
+            if (cha_pi_jifen >  (float)TURN_CHA_PI_JI_FEN_SHANG_XIAN) cha_pi_jifen =  (float)TURN_CHA_PI_JI_FEN_SHANG_XIAN;
+            if (cha_pi_jifen < -(float)TURN_CHA_PI_JI_FEN_SHANG_XIAN) cha_pi_jifen = -(float)TURN_CHA_PI_JI_FEN_SHANG_XIAN;
+            cha_pi = (xi_wang_cha - shi_ji_cha) * (float)TURN_CHA_PI_KP
+                   + cha_pi_jifen * (float)TURN_CHA_PI_KI;
 
             /* 实测速比反推半径，台架标定时看它有没有接近 R = L/tan(d) */
             {
@@ -351,17 +376,20 @@ int16 turn (int16 degrees)
 
             if (fang_xiang > 0)   // 右转：左轮外、右轮内
             {
-                cc_l = cc_wai + cha_pi;
-                cc_r = cc_nei - cha_pi;
+                cc_l = cc_wai + (int32)cha_pi;
+                cc_r = cc_nei - (int32)cha_pi;
             }
             else                  // 左转：右轮外
             {
-                cc_r = cc_wai + cha_pi;
-                cc_l = cc_nei - cha_pi;
+                cc_r = cc_wai + (int32)cha_pi;
+                cc_l = cc_nei - (int32)cha_pi;
             }
 
-            qi_shi[0] = (int16)turn_lei_ji_chong[0];
-            qi_shi[1] = (int16)turn_lei_ji_chong[1];
+            /* 本窗口起点用 int32 存（原来是 (int16) 强制转换）：turn_lei_ji_chong 是 int32 累计值，
+             * 一旦超过 32 767 脉冲（R≈409 时约 61°），(int16) 会把起点压回负数，差值瞬间多出 65 536，
+             * 堵转判据 d_zeng < TURN_DU_ZHUAN_ZHI 恒不成立，转弯只能等超时退出（审查 P0-2，已核实）。 */
+            qi_shi[0] = turn_lei_ji_chong[0];
+            qi_shi[1] = turn_lei_ji_chong[1];
             t_ce      = t_now;
         }
 
