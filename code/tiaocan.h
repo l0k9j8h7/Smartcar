@@ -93,11 +93,24 @@
  * 标定拆成四个能直接量的长度/计数，先量再跑，别用拍的数。 */
 
 /* --- 6.1 硬件 --- */
+/* 2026-11-09 按实车接线图重排 P02 口：P02.4/P02.5 两路 PWM，P02.6/P02.7 两路方向。
+ * 与上一版（P02.4 PWM + P02.5 DIR + P02.6 PWM + P02.7 DIR）是 P02.5 与 P02.6 互换角色，
+ * 物理上两种接法都成立（P02_4~P02_7 既能做 ATOM0_CH4~CH7 输出，也能当普通 GPIO），
+ * 差别只在「哪根线是 PWM、哪根线是方向」。所以改这两行必须和实际接线一致：
+ *   - 如果板子已经按上一版焊好（P02.5 接 IN2、P02.6 接 PWM），把下面两行的 P02_5/P02_6 换回去；
+ *   - 如果按新图接（P02.5 接 PWM、P02.6 接 IN2），保持现在的写法。
+ * 接错的典型现象：某个轮子完全不动（PWM 打在方向脚上，占空比只会在 0/满之间跳），
+ * 或者轮子只会一个方向猛转（方向脚被当成 PWM 拉动）。 */
 #define TURN_PWM_ZUO            ATOM0_CH4_P02_4     // 左电机 PWM：P02.4（ATOM0_CH4）
-#define TURN_PWM_YOU            ATOM0_CH6_P02_6     // 右电机 PWM：P02.6（ATOM0_CH6）
-#define TURN_DIR_ZUO            P02_5               // 左电机方向：P02.5（DRV8701E 的 IN2，普通 GPIO）
+#define TURN_PWM_YOU            ATOM0_CH5_P02_5     // 右电机 PWM：P02.5（ATOM0_CH5）
+                                                    // 两路同在 ATOM0，CH4/CH5 还同属 AGC1 一组，
+                                                    // 必须同频（MOTOR_PWM_PINLV 两路共用一个宏）；不同频会互相改周期
+#define TURN_DIR_ZUO            P02_6               // 左电机方向：P02.6（DRV8701E 的 IN2，普通 GPIO）
 #define TURN_DIR_YOU            P02_7               // 右电机方向：P02.7（DRV8701E 的 IN2，普通 GPIO）
-#define TURN_ENCODER_ZUO        TIM4_ENCODER        // 左轮编码器 TIM4: P02_8(A)/P00_9(B)，B 也可换 P33_5
+#define TURN_ENCODER_ZUO        TIM4_ENCODER        // 左轮编码器 TIM4: P02_8(A)/P00_9(B)
+                                                    // B 相两个可选：P00_9 = T4EUDA，P33_5 = T4EUDB，
+                                                    // 功能等价，当前用 P00_9（与摄像头 P00_0~P00_7 不冲突）。
+                                                    // 改 B 相要同时改 motor.c 里 encoder_quad_init 那行，两处必须一致
                                                     // 原来是 TIM5(P21_7/P21_6)：T5 属 GPT2，没有增量接口模式，
                                                     // encoder_quad_init 的 zf_assert 会直接死等，见 motor.c 注释
 #define TURN_ENCODER_YOU        TIM2_ENCODER        // 右轮编码器 TIM2: P33_7(A)/P33_6(B)
@@ -174,7 +187,7 @@
 
 #define MOTOR_PWM_MAX           10000   // 单轮占空比硬限幅，逐飞库量程 0~10000
 #define MOTOR_PWM_PINLV         17000   // 两路电机 PWM 频率，必须同频，不同频低速段两轮响应差很多
-#define MOTOR_DIR_ZUO_LEVEL     0       // 左电机方向脚（P02.5 / DRV8701E IN2）前进电平，实车反了改 1
+#define MOTOR_DIR_ZUO_LEVEL     0       // 左电机方向脚（P02.6 / DRV8701E IN2）前进电平，实车反了改 1
 #define MOTOR_DIR_YOU_LEVEL     0       // 右电机方向脚（P02.7 / IN2）前进电平，实车反了改 1
 #define MOTOR_CE_SU_WIN         1000000 // 测速窗口 10 ms（1 ms = 100000，system_getval 单位 10 ns）
 

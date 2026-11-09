@@ -1,0 +1,182 @@
+<pinSettings xmlns="http://www.tasking.com/schema/pinsettings/v1.1">
+  <pinMappingsRef version="1.10" file="platform:/plugin/com.tasking.pinmapper.input.aurix/etc/TC26x_A-B_pinmappings.xml"/>
+  <deviceSetting id="tc26xb" pattern="TC267* B">
+    <packageSetting id="bga292"/>
+  </deviceSetting>
+  <configSetting configurationId="p14_5.in.bind" altId="p14_5.in.bind.in">
+    <connectionSetting altId="evr3v.en.bind.en"/>
+  </configSetting>
+  <configSetting configurationId="p14_3.in.bind" altId="p14_3.in.bind.in">
+    <connectionSetting altId="scu.hwcfg3.bind.hwcfg3"/>
+  </configSetting>
+  <configSetting configurationId="scu.hwcfg5.bind" altId="scu.hwcfg5.bind.hwcfg5">
+    <connectionSetting altId="p10_6.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="evr1v.mode.bind" altId="evr1v.mode.bind.mode">
+    <connectionSetting altId="p14_6.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="evr1v.en.bind" altId="evr1v.en.bind.en">
+    <connectionSetting altId="p14_2.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="p14_2.in.bind" altId="p14_2.in.bind.in">
+    <connectionSetting altId="evr1v.en.bind.en"/>
+  </configSetting>
+  <configSetting configurationId="p14_6.in.bind" altId="p14_6.in.bind.in">
+    <connectionSetting altId="evr1v.mode.bind.mode"/>
+  </configSetting>
+  <configSetting configurationId="p10_6.in.bind" altId="p10_6.in.bind.in">
+    <connectionSetting altId="scu.hwcfg5.bind.hwcfg5"/>
+  </configSetting>
+  <configSetting configurationId="p20_2.in.bind" altId="p20_2.in.bind.in">
+    <connectionSetting altId="scu.testmode.bind.testmode"/>
+  </configSetting>
+  <configSetting configurationId="p10_5.in.bind" altId="p10_5.in.bind.in">
+    <connectionSetting altId="scu.hwcfg4.bind.hwcfg4"/>
+  </configSetting>
+  <configSetting configurationId="scu.hwcfg4.bind" altId="scu.hwcfg4.bind.hwcfg4">
+    <connectionSetting altId="p10_5.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="porst_n.in.bind" altId="porst_n.in.bind.in">
+    <connectionSetting altId="scu.porst.bind.porst"/>
+  </configSetting>
+  <configSetting configurationId="evr3v.en.bind" altId="evr3v.en.bind.en">
+    <connectionSetting altId="p14_5.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="scu.hwcfg3.bind" altId="scu.hwcfg3.bind.hwcfg3">
+    <connectionSetting altId="p14_3.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="scu.testmode.bind" altId="scu.testmode.bind.testmode">
+    <connectionSetting altId="p20_2.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="scu.hwcfg6.bind" altId="scu.hwcfg6.bind.hwcfg6">
+    <connectionSetting altId="p14_4.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="scu.porst.bind" altId="scu.porst.bind.porst">
+    <connectionSetting altId="porst_n.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="p14_4.in.bind" altId="p14_4.in.bind.in">
+    <connectionSetting altId="scu.hwcfg6.bind.hwcfg6"/>
+  </configSetting>
+  <configSetting configurationId="asclin1.rxd.bind" altId="asclin1.rxd.bind.rxd6">
+    <connectionSetting altId="p02_3.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="tout5.out.bind" altId="tout5.out.bind.out">
+    <connectionSetting altId="p02_5.out.bind.alt1"/>
+  </configSetting>
+  <configSetting configurationId="gptone0.t4eud.bind" altId="gptone0.t4eud.bind.t4eud0">
+    <connectionSetting altId="p00_9.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="asclin1.txd.bind" altId="asclin1.txd.bind.out">
+    <connectionSetting altId="p02_2.out.bind.alt2.mutex1"/>
+  </configSetting>
+  <configSetting configurationId="p02_6.dir" altId="p02_6.dir.out"/>
+  <configSetting configurationId="p14_0.dir" altId="p14_0.dir.out"/>
+  <configSetting configurationId="p33_7.in.bind" altId="p33_7.in.bind.in">
+    <connectionSetting altId="gptone0.t2in.bind.t2in1"/>
+  </configSetting>
+  <configSetting configurationId="p14_1.in.bind" altId="p14_1.in.bind.in">
+    <connectionSetting altId="asclin0.rxd.bind.rxd0"/>
+  </configSetting>
+  <configSetting configurationId="p02_8.in.bind" altId="p02_8.in.bind.in">
+    <connectionSetting altId="gptone0.t4in.bind.t4in0"/>
+  </configSetting>
+  <configSetting configurationId="p02_7.dir" altId="p02_7.dir.out"/>
+  <configSetting configurationId="p33_1.out.state" altId="p33_1.out.state.high"/>
+  <configSetting configurationId="p02_4.out.bind" altId="p02_4.out.bind.alt1">
+    <connectionSetting altId="tout4.out.bind.out"/>
+  </configSetting>
+  <configSetting configurationId="p14_0.out.bind" altId="p14_0.out.bind.alt2.mutex1">
+    <connectionSetting altId="asclin0.txd.bind.out"/>
+  </configSetting>
+  <configSetting configurationId="p02_2.in.bind" altId="p02_2.in.bind.none"/>
+  <configSetting configurationId="p02_0.in.bind" altId="p02_0.in.bind.in">
+    <connectionSetting altId="eruin3.in.bind.in2"/>
+  </configSetting>
+  <configSetting configurationId="p33_9.dir" altId="p33_9.dir.out"/>
+  <configSetting configurationId="eruin2.in.bind" altId="eruin2.in.bind.in1">
+    <connectionSetting altId="p02_1.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="p33_1.dir" altId="p33_1.dir.out"/>
+  <configSetting configurationId="tout31.out.bind" altId="tout31.out.bind.out">
+    <connectionSetting altId="p33_9.out.bind.alt1"/>
+  </configSetting>
+  <configSetting configurationId="p33_6.in.bind" altId="p33_6.in.bind.in">
+    <connectionSetting altId="gptone0.t2eud.bind.t2eud1"/>
+  </configSetting>
+  <configSetting configurationId="p02_5.out.state" altId="p02_5.out.state.low"/>
+  <configSetting configurationId="p33_9.out.state" altId="p33_9.out.state.not_changed"/>
+  <configSetting configurationId="p33_9.out.bind" altId="p33_9.out.bind.alt1">
+    <connectionSetting altId="tout31.out.bind.out"/>
+  </configSetting>
+  <configSetting configurationId="p02_2.out.bind" altId="p02_2.out.bind.alt2.mutex1">
+    <connectionSetting altId="asclin1.txd.bind.out"/>
+  </configSetting>
+  <configSetting configurationId="p00_9.in.bind" altId="p00_9.in.bind.in">
+    <connectionSetting altId="gptone0.t4eud.bind.t4eud0"/>
+  </configSetting>
+  <configSetting configurationId="p02_2.dir" altId="p02_2.dir.out"/>
+  <configSetting configurationId="p02_4.in.bind" altId="p02_4.in.bind.none"/>
+  <configSetting configurationId="p02_3.in.bind" altId="p02_3.in.bind.in">
+    <connectionSetting altId="asclin1.rxd.bind.rxd6"/>
+  </configSetting>
+  <configSetting configurationId="gptone0.t2in.bind" altId="gptone0.t2in.bind.t2in1">
+    <connectionSetting altId="p33_7.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="eruin3.in.bind" altId="eruin3.in.bind.in2">
+    <connectionSetting altId="p02_0.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="tout4.out.bind" altId="tout4.out.bind.out">
+    <connectionSetting altId="p02_4.out.bind.alt1"/>
+  </configSetting>
+  <configSetting configurationId="p02_1.in.bind" altId="p02_1.in.bind.in">
+    <connectionSetting altId="eruin2.in.bind.in1"/>
+  </configSetting>
+  <configSetting configurationId="asclin0.txd.bind" altId="asclin0.txd.bind.out">
+    <connectionSetting altId="p14_0.out.bind.alt2.mutex1"/>
+  </configSetting>
+  <configSetting configurationId="asclin0.rxd.bind" altId="asclin0.rxd.bind.rxd0">
+    <connectionSetting altId="p14_1.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="p02_7.out.state" altId="p02_7.out.state.low"/>
+  <configSetting configurationId="p02_5.out.bind" altId="p02_5.out.bind.alt1">
+    <connectionSetting altId="tout5.out.bind.out"/>
+  </configSetting>
+  <configSetting configurationId="p02_4.dir" altId="p02_4.dir.out"/>
+  <configSetting configurationId="gptone0.t4in.bind" altId="gptone0.t4in.bind.t4in0">
+    <connectionSetting altId="p02_8.in.bind.in"/>
+  </configSetting>
+  <configSetting configurationId="p02_5.dir" altId="p02_5.dir.out"/>
+  <configSetting configurationId="gptone0.t2eud.bind" altId="gptone0.t2eud.bind.t2eud1">
+    <connectionSetting altId="p33_6.in.bind.in"/>
+  </configSetting>
+  <propertySetting propertyId="p02_2.symbolicname" value="ASCLIN1_TXD"/>
+  <propertySetting propertyId="p02_3.symbolicname" value="ASCLIN1_RXD"/>
+  <propertySetting propertyId="p02_0.symbolicname" value="ERUIN3_IN"/>
+  <propertySetting propertyId="p00_9.symbolicname" value="GPTONE0_T4EUD"/>
+  <propertySetting propertyId="p02_4.symbolicname" value="TOUT4_OUT"/>
+  <propertySetting propertyId="p33_9.symbolicname" value="TOUT31_OUT"/>
+  <propertySetting propertyId="p33_7.symbolicname" value="GPTONE0_T2IN"/>
+  <propertySetting propertyId="p33_6.symbolicname" value="GPTONE0_T2EUD"/>
+  <propertySetting propertyId="p02_1.symbolicname" value="ERUIN2_IN"/>
+  <propertySetting propertyId="p14_1.symbolicname" value="ASCLIN0_RXD"/>
+  <propertySetting propertyId="p02_8.symbolicname" value="GPTONE0_T4IN"/>
+  <propertySetting propertyId="p02_5.symbolicname" value="TOUT5_OUT"/>
+  <propertySetting propertyId="p02_6.symbolicname" value="MOTOR_DIR_L"/>
+  <propertySetting propertyId="p14_0.symbolicname" value="ASCLIN0_TXD"/>
+  <configSetting configurationId="p00_6.in.bind" altId="p00_6.in.bind.gpio"/>
+  <configSetting configurationId="p00_5.in.bind" altId="p00_5.in.bind.gpio"/>
+  <configSetting configurationId="p00_3.in.bind" altId="p00_3.in.bind.gpio"/>
+  <configSetting configurationId="p00_1.in.bind" altId="p00_1.in.bind.gpio"/>
+  <configSetting configurationId="p00_4.in.bind" altId="p00_4.in.bind.gpio"/>
+  <configSetting configurationId="p00_7.in.bind" altId="p00_7.in.bind.gpio"/>
+  <configSetting configurationId="p00_2.in.bind" altId="p00_2.in.bind.gpio"/>
+  <configSetting configurationId="p00_0.in.bind" altId="p00_0.in.bind.gpio"/>
+  <propertySetting propertyId="p00_3.symbolicname" value="GPIO4"/>
+  <propertySetting propertyId="p00_2.symbolicname" value="GPIO3"/>
+  <propertySetting propertyId="p00_1.symbolicname" value="GPIO2"/>
+  <propertySetting propertyId="p00_0.symbolicname" value="GPIO1"/>
+  <propertySetting propertyId="p00_4.symbolicname" value="GPIO5"/>
+  <propertySetting propertyId="p00_5.symbolicname" value="GPIO6"/>
+  <propertySetting propertyId="p00_7.symbolicname" value="GPIO8"/>
+  <propertySetting propertyId="p00_6.symbolicname" value="GPIO7"/>
+</pinSettings>

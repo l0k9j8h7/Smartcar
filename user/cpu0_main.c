@@ -128,16 +128,27 @@ int core0_main (void)
     system_start(); //计时启动
     // 此处编写用户代码 例如外设初始化代码等
     zf_log(mt9v03x_init(), "mt9v03x init error");
-    /* ---------------- 电机 / 编码器 / 舵机（按 2026-11-07 实车接线表） ----------------
-     *   左电机   P02.4 = PWM(ATOM0_CH4)   P02.5 = DIR(GPIO)
-     *   右电机   P02.6 = PWM(ATOM0_CH6)   P02.7 = DIR(GPIO)
-     *   左编码器 P21.7 = A  P21.6 = B     -> TIM5
-     *   右编码器 P33.7 = A  P33.6 = B     -> TIM2
+    /* ---------------- 电机 / 编码器 / 舵机（按 2026-11-09 实车接线图） ----------------
+     *   左电机   P02.4 = PWM(ATOM0_CH4)   P02.6 = DIR(GPIO)
+     *   右电机   P02.5 = PWM(ATOM0_CH5)   P02.7 = DIR(GPIO)
+     *   左编码器 P02.8 = A  P00.9 = B     -> TIM4 正交
+     *   右编码器 P33.7 = A  P33.6 = B     -> TIM2 正交
      *   舵机     P33.9 = ATOM0_CH1，50 Hz
+     *   P33.1    = GPIO 推挽输出高（用途未在硬件上确认，见下面 gpio_init 处注释）
      * 注意：P02.0~P02.3 是摄像头 VSY/PCLK/SCCB，P02.4~P02.7 全给了电机，P02 口已排满。
-     * 旧版「左 TIM2 P33_7/6 + 右 TIM4 P02_8/P33_5」已作废，改接线后必须用下面这两行。 */
+     * 三个坑别再踩：
+     *   ① 左编码器不要用 TIM5(P21_7/P21_6)：T5 属 GPT2，T5CON 没有增量接口模式，
+     *      encoder_quad_init 开头的 zf_assert(encoder_n <= TIM4_ENCODER) 会直接命中并死等，
+     *      现象是上电轮子不动、串口只刷 Assert error；
+     *   ② P33_5 已腾空，左编码器 B 相改用 P00_9（T4EUDA），它和摄像头 P00_0~P00_7 不冲突；
+     *   ③ 图上写的舵机 P03.9 是笔误，TC264 没有 P03 口，实际就是 P33_9。
+     * 具体引脚全在 tiaocan.h 第六节，改接线只改那里，不要在这里硬写。 */
     motor_init();                                   // 双电机 PWM + 两路方向脚 + 两路编码器，见 code/motor.c
     pwm_init(ATOM0_CH1_P33_9, 50, SERVO_CENTER);    // 舵机 50 Hz，中值 750
+    /* P33_1 置高：代码里没有交代用途，硬件上也没确认。
+     * 如果它其实是 DRV8701 的 EN/nSLEEP（低电平休眠、高电平使能），那这里置高是对的；
+     * 但那样就意味着「上电即使能驱动」，调试时轮子可能一动就窜，建议核实后改成
+     * 「发车前再拉高」。如果它只是无关的指示脚，保留即可。改之前先量一下 P33.1 到驱动的走线。 */
     gpio_init(P33_1, GPO, 1, GPO_PUSH_PULL);
     seekfree_assistant_interface_init(SEEKFREE_ASSISTANT_DEBUG_UART);
     seekfree_assistant_camera_config(&camera_obj, SEEKFREE_ASSISTANT_CAMERA_TYPE_MT9V03X,

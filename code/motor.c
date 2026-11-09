@@ -26,6 +26,13 @@ static int32 motor_xian_fu (int32 v)
 
 void motor_init (void)
 {
+    /* 引脚表（2026-11-09 按接线图定稿，宏都在 tiaocan.h 第六节，本文件不硬写引脚）：
+     *   左 PWM  P02.4 / ATOM0_CH4      右 PWM  P02.5 / ATOM0_CH5
+     *   左 DIR  P02.6（GPIO）          右 DIR  P02.7（GPIO）
+     *   左编码  P02.8(A) / P00.9(B) -> TIM4 正交
+     *   右编码  P33.7(A) / P33.6(B) -> TIM2 正交
+     * 左 P02.4 与右 P02.5 同属 ATOM0 且同在 AGC1 组：占空比各通道独立没问题，
+     * 但周期（频率）是组共用的，所以两路 MUST 同频 —— 都走 MOTOR_PWM_PINLV。 */
     /* 方向脚先定电平再开 PWM：pwm_init 之前驱动板 IN2 悬空，轮子可能抽一下 */
     gpio_init(TURN_DIR_ZUO, GPO, MOTOR_DIR_ZUO_LEVEL, GPO_PUSH_PULL);
     gpio_init(TURN_DIR_YOU, GPO, MOTOR_DIR_YOU_LEVEL, GPO_PUSH_PULL);
