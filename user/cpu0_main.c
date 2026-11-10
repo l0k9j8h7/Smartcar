@@ -75,7 +75,8 @@ int64 last_frame=0;//记录上一帧的时间
 seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
 extern volatile int16 err;
-uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区
+uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区（二值化/去噪/找线用，会被就地改写）
+uint8_t image_raw[MT9V03X_H][MT9V03X_W];               // 原始灰度帧快照，仅供逐飞助手图传，全程不做二值化
 
 /* ---------------- 丢线记忆 + 缓降速度（251e810 报告 §5.1 / §7.4 第 6 条） ----------------
  * 旧写法丢线就回中：车顺着上一次的偏差直直冲出去，"回中"等于放弃追赶。
@@ -198,20 +199,21 @@ int core0_main (void)
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
-            memcpy(image_copy, mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03xb_image 不会被写
+            /* 一次取原始帧，分两路用：image_raw 给逐飞助手看原始灰度图（不做任何处理），
+             * image_copy 给二值化/找线用。两份内容在拷贝当时完全相同，之后互不影响。 */
+            memcpy(image_raw,  mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
+            memcpy(image_copy, image_raw,     MT9V03X_IMAGE_SIZE);
             last_frame = now_ticks;
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
 
             /* ---------------- 图传握手（审查 §9.4 第 8 条 / N-8） ----------------
-             * 顺序是本次改的：先处理完，再自增 copy_flag。
-             * 原来 copy_flag++ 在 double_value() 之前，CPU1 一拿到信号就 memcpy(image_copy)，
-             * 而 CPU0 正在就地把 image_copy 二值化 —— 两边同时读写同一块缓冲区，
-             * 图传里会看到半帧灰度、半帧二值化的撕裂画面，严重时干脆脏帧。
-             * 现在 CPU1 拷到的永远是「处理完的整帧」；busy 由 CPU1 在 memcpy 之前置位、
-             * 发完之后清（见 cpu1_main.c），所以下面这段忙等正好盖住拷贝窗口，才是有效保护。
-             * 耗时口径：一帧 22 560 B / 115200 8N1 ≈ 2.0 s，ZU_SE_ZHEN_SHU=250 帧约 5 s 攒一次，
-             * 即图传约 5 s 一帧，不是实时画面；要更实时只能提高波特率或减小帧尺寸。 */
+             * 2026-11-10 改：逐飞助手改传「原始灰度图像」，不再传二值化后的图。
+             * CPU1 现在从 image_raw 拷贝（见 cpu1_main.c），而 image_raw 只在上方 DMA 完成窗口里写入、从不被
+             * double_value() / 去噪 / 找线改动，因此图传与图像处理完全解耦，上位机看到的是摄像头真实画面。
+             * busy 仍由 CPU1 在 memcpy 之前置位、发完之后清，下面这段忙等盖住拷贝窗口，防止上下两帧拼接。
+             * 耗时口径不变：MT9V03X 灰度与二值图都是 1 B/像素，一帧 22 560 B / 115200 8N1 ≈ 2.0 s，
+             * ZU_SE_ZHEN_SHU=250 帧约 5 s 攒一次，图传约 5 s 一帧；要更实时只能提高波特率或减小帧尺寸。 */
             copy_flag++;
             if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
             {

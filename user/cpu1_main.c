@@ -45,7 +45,7 @@ volatile uint8 busy=0;
  * CPU0 侧的忙等超时（TU_CHUAN_CHAO_SHI）才是唯一兜底。 */
 volatile uint16 copy_flag=0;
 
-extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
+extern uint8_t image_raw[MT9V03X_H][MT9V03X_W];    // CPU0 侧原始灰度帧，图传专用（未二值化）
 // 将本语句与#pragma section all restore语句之间的全局变量都放在CPU1的RAM中
 
 // **************************** 代码区域 ****************************
@@ -53,7 +53,7 @@ extern uint8_t image_copy[MT9V03X_H][MT9V03X_W];
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
 // 本例程是开源库空工程 可用作移植或者测试各类内外设
-uint8_t copy[MT9V03X_H][MT9V03X_W];
+uint8_t copy[MT9V03X_H][MT9V03X_W];        // 逐飞助手图传发送缓冲，内容 = 原始灰度图像
 void core1_main (void)
 {
     disable_Watchdog();                     // 关闭看门狗
@@ -68,13 +68,12 @@ void core1_main (void)
          * 属于无意义的多层结构（251e810 报告 P1-7）。合成单层，逻辑完全等价。 */
         if (copy_flag>=ZU_SE_ZHEN_SHU)
         {           // 由 CPU0 置位的"可发送"标志
-            /* busy 提到 memcpy 之前（审查 N-8 / §9.4 第 8 条）：原来「先拷贝、后置 busy」，
-             * CPU0 的忙等正好盖不住这段拷贝 —— 拷贝进行中 CPU0 已在往 image_copy 里写下一帧，
-             * 拷出来的就是前后两帧拼起来的撕裂图。现在 busy 覆盖「拷贝 + 发送」全程，
-             * CPU0 见到 busy=1 就不会再动 image_copy；copy_flag 在拷贝完成后清零，
-             * 下一步要等新的 250 帧才再次进入这里，时机不会再撞上 CPU0 的写。 */
+            /* 2026-11-10 改：图传改传原始灰度图，数据源从 image_copy（二值化后）换成 image_raw（原始帧）。
+             * busy 仍提到 memcpy 之前（审查 N-8 / §9.4 第 8 条）：覆盖「拷贝 + 发送」全程，
+             * 防止 CPU0 在拷贝窗口里刷新 image_raw 而拼出两帧。copy_flag 在拷贝完成后清零，
+             * 下一次要等新的 250 帧。发送缓冲 copy 在 CPU1 本地 RAM，发送期间不会被改写。 */
             busy=1;
-            memcpy(copy, image_copy, MT9V03X_IMAGE_SIZE);
+            memcpy(copy, image_raw, MT9V03X_IMAGE_SIZE);     // 原始灰度帧，不是二值化图
 
             copy_flag=0;
             seekfree_assistant_camera_send(&camera_obj);
