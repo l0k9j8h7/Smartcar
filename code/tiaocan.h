@@ -105,8 +105,8 @@
 #define MAXSECTIONS 32              // 一行白段上限，188/(5+1) 约 31，取 32
 #define ZUI_DA_GAO_DU 50            // 计算斜率时向上爬的最大行数
 #define YUN_XV_SHI_BAI_CI_SHU 5     // 爬线允许的失败次数
-#define BFS_QUEUE_LEN 4096          // 连通域 BFS 队列长度（像素个数，uint16 索引 -> 8 KB）。
-                                    // 原 1024 只有一帧的 4.5%，大连通区一冲满就丢像素、块被切断。
+#define BFS_QUEUE_LEN 1024          // 连通域 BFS 队列长度（像素个数，uint16 索引 -> 2 KB）。
+                                    // 实车裁决 2026-11-12：1024 已够用，按实车连通块大小取 1024，省 6 KB DSPR0（审查曾建议扩 4096）。
 #define MAX_LINE_WIDTH 120          // 斜率爬线时允许的赛道宽度（像素）：爬线过程中不许越爬越宽。
                                     // 构造图像实测低对比噪声假线宽 159，这个值压小是有意的。
                                     // 它只管「爬线」，不再决定整帧是否丢线（见下面 XUN_XIAN_ZUI_DA_KUAN_DU）。

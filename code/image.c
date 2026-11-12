@@ -37,9 +37,9 @@ typedef struct
 {
     int16 n;   // 订正报告 P2-2：image_init 实测值域 0~252，int8 会溢出，故收窄为 int16 而非 int8
 } ding_bi_shu_256;
-/* BFS 队列（审查 §9 第 7 条）：1024 只有一帧像素的 4.5%，大面积连通区一冲满 push 就直接 return，
- * 连通块被切成两半 -> 块大小算错 -> 该删的没删、该留的删了。扩到 BFS_QUEUE_LEN(4096)，
- * 512 个 uint16 的代价换掉这个隐患；仍在 CPU0 本地 RAM（DSPR0 72 KB）。
+/* BFS 队列：实车裁决 2026-11-12 用 BFS_QUEUE_LEN(1024)，仍在 CPU0 本地 RAM（DSPR0 72 KB）。
+ * 审查报告第 9 节第 7 条曾建议 1024->4096（怕大连通区冲满、push 丢弃后块被切断）；
+ * 实车连通块没有那么大，1024 已够用，省下 6 KB DSPR0（该段本就被三块整帧缓冲吃紧）。
  * 注意 push 满时依然是「丢弃」而不是覆盖，这是有意的：宁可少扫一块，也不能把队列绕乱。 */
 #pragma section all "cpu0_dsram"
 struct dui
