@@ -24,7 +24,12 @@
 #define SERVO_MAX 1100              // 舵机输出上限
 #define DELTA_LIMIT 150             // 主循环 delta 钳位范围，正负 DELTA_LIMIT
 #define SLOPE_WEIGHT 55             // 斜率前馈权重，delta = pid() + x1 * SLOPE_WEIGHT
-#define SLOPE_LIMIT 100             // 斜率绝对值超过此值判为丢线
+/* 斜率越界保护（复核报告 P1-6）：x1 的量纲是「像素/行」，典型 0.1~2.0，极值约 3.7
+ * （ZUI_DA_GAO_DU=50 行内横跨 187 像素）。原值 100 用在斜率上永远不会触发，
+ * 所谓「斜率越界判丢线」是死保护 -- 这是修复版漏掉的一条。
+ * 现取 3.0：正常弯道都在 ±2 内，超过就说明这帧的边线已经不是赛道边（噪声假线/反色残留）。
+ * 【必须上车复核】宽弯/急弯常被误判丢线，就按 0.5 一档往上放到 4.0；别回到 100。 */
+#define SLOPE_LIMIT 3.0f            // 斜率绝对值超过此值判为丢线（单位：像素/行）
 #define LINE_LEFT_MIN 10            // 有效左边线的最小列号
 #define LINE_RIGHT_MAX 178          // 有效右边线的最大列号
 #define IMAGE_CENTER 187            // 图像中心列，err = (左边界 + 右边界) - IMAGE_CENTER
@@ -33,15 +38,31 @@
 #define PID_KP 1.0f                 // 比例系数，调大响应变快但易过冲
 #define PID_KI 0.2f                 // 积分系数，让轨迹更贴近目标
 #define PID_KD 0.6f                 // 微分系数，抑制振荡，只在突变时起主要作用
-#define PID_INTEGRAL_GATE 100       // 误差绝对值小于此值才允许积分
-#define PID_P_LIMIT 80              // P 项限幅，正负 PID_P_LIMIT
+/* 积分分离门限（审查 §6.1 / 订正版 §3 第 9 条）：err 有效量程是 -166~168
+ * （lline>=10、rline<=178 夹出来的），原来门限写 100，弯道常见帧 |err|>=100 时 I 项
+ * **完全不累积** -- 不是「贡献小」，是「不存在」，§4.2 整节论证的 I 项失效根因就在这里。
+ * 现在取 187（> 168），等于取消分离、全量程积分，I 项才真正起作用。
+ * 如果实车发现直道被积分带偏，先降 PID_KI，再考虑把这个门限调回 120~150。 */
+#define PID_INTEGRAL_GATE 187       // 误差绝对值小于此值才允许积分
+/* P 限幅 80 -> 200（审查 §6.2）：有效 err 量程 335 个整数取值，±80 限幅下约 52% 的区间里
+ * P 是常数，弯道等于开环。提到 200 后线性区覆盖整个量程，饱和交给主循环的 DELTA_LIMIT(150)。 */
+#define PID_P_LIMIT 200             // P 项限幅，正负 PID_P_LIMIT
 #define PID_I_LIMIT 40              // I 项限幅，正负 PID_I_LIMIT
 #define PID_D_LIMIT 50              // D 项限幅，正负 PID_D_LIMIT
 #define DI_TONG_ZHI_HOU 0.55        // D 项低通系数 0~1，越大越信任本次微分
 #define MAX_DELTA 200               // 保留参数，当前代码未使用，供后续扩展限幅用
+/* 丢帧折算用的标称控制周期（复核报告 §4.2）：摄像头 50 fps = 20 ms/帧，system_getval 单位 10 ns。
+ * PID_DT_MAX_10NS = 100 ms：超过它（断流、首帧）不按比例折算，直接当 1 帧处理，避免 dt 极小/极大放大噪声。 */
+#define PID_DT_NOMINAL_10NS 2000000
+#define PID_DT_MAX_10NS     10000000
 
 /* ========== 四、安全保护（修复版新增，实车优先复调这几项） ========== */
-#define TU_CHUAN_CHAO_SHI 5000000   // 图传忙等超时 50 ms，防 CPU1 卡住时 CPU0 永久死等
+#define TU_CHUAN_CHAO_SHI 500000    // 图传握手的「拷贝窗口」超时 5 ms（复核报告 §5 / §8 第 3 条）
+                                    // busy 只覆盖 CPU1 的 memcpy（22 560 B，DSPR1 内本核访问约 0.1~0.2 ms），
+                                    // 2026-11-12 起 cpu1_main.c 拷完即清 busy，不再覆盖后面 1.958 s 的发送，
+                                    // 所以 5 ms 已是 25 倍余量。原值 50 ms 是对着「拷贝+发送」那个
+                                    // 39 倍失配的旧窗口定的，已作废。
+                                    // 超时语义：放弃本帧对 image_raw 的保护（最多拼一帧图传画面），不影响控制。
 #define WU_ZHEN_CHAO_SHI 50000000   // 摄像头断流判定 0.5 s，超时无新帧即回中降速
 #define FIND_LINE_MIN_ROW 10        // 找线上溯最低行，原下界 100 只回溯 19 行
 #define MIN_TRACK_WIDTH 30          // 小于此像素宽度视为单边线，正常双边线间距约 60~110
@@ -70,6 +91,12 @@
 #define DIU_XIAN_ZUI_DI_SU 150      // 缓降的占空比下限，别让车"停在线外"彻底不动
 #define DIU_XIAN_ZUI_DA_ZHEN 15     // 连续丢线超过这么多帧（约 0.3 s）仍找不到线，就加大打舵再搏一次
 #define DIU_XIAN_MANG_QU_BI 20      // 上面那种情况每帧额外加多少偏置，累加到 DELTA_LIMIT 为止，0 = 不加
+/* 丢线超时停车（审查 §9 第 6 条的安全项）：缓降最低只到 DIU_XIAN_ZUI_DI_SU(150)，
+ * 一直找不到线就会以 15% 占空比永远往前蹭，撞墙/冲出场地都不停。这里补一道硬保护：
+ * 连续丢线超过此帧数直接给 0 占空比（舵机仍按记忆偏置，不突然回中）。
+ * 一帧约 20 ms：150 帧 ≈ 3 s。嫌太容易停就加大（200~250），要更快停下就减小（80~100）。
+ * 设为 0 = 关闭本保护，回到"永远缓降"。 */
+#define DIU_XIAN_TING_CHE_ZHEN 150
 
 /* ========== 五、图像处理（原有宏，值保持不变） ========== */
 #define LINEWIDTH 7                 // 找线滑动窗口宽度
@@ -78,7 +105,16 @@
 #define MAXSECTIONS 32              // 一行白段上限，188/(5+1) 约 31，取 32
 #define ZUI_DA_GAO_DU 50            // 计算斜率时向上爬的最大行数
 #define YUN_XV_SHI_BAI_CI_SHU 5     // 爬线允许的失败次数
-#define MAX_LINE_WIDTH 120         // 斜率爬线赛道最大宽度；报告 P1-2 建议 160，构造图像实测低对比噪声假线宽 159，取 120 兼顾宽赛道与噪声兜底
+#define BFS_QUEUE_LEN 4096          // 连通域 BFS 队列长度（像素个数，uint16 索引 -> 8 KB）。
+                                    // 原 1024 只有一帧的 4.5%，大连通区一冲满就丢像素、块被切断。
+#define MAX_LINE_WIDTH 120          // 斜率爬线时允许的赛道宽度（像素）：爬线过程中不许越爬越宽。
+                                    // 构造图像实测低对比噪声假线宽 159，这个值压小是有意的。
+                                    // 它只管「爬线」，不再决定整帧是否丢线（见下面 XUN_XIAN_ZUI_DA_KUAN_DU）。
+#define XUN_XIAN_ZUI_DA_KUAN_DU 150 // 巡线可接受的最大底行宽度（审查 P0-1 订正版 / 复核 §4-A）。
+                                    // 底行宽于它 = 宽到不像赛道（白墙、噪声假线 159），按丢线处理；
+                                    // 120~150 之间 = 真实宽赛道（底行常在 110~140）：斜率不算，
+                                    // err 照常巡线，不再整帧误杀。
+                                    // 上限必须 <= 158 -- 取 160 就把 159 的假线放行了。
 #define MAX_BIAS 50                 // 框识别允许的最大偏移
 #define MAX_BOX 5                   // 最多识别的框数量
 #define MIN_BOX_HEIGHT 10           // 框的最小高度
@@ -197,5 +233,26 @@
 #define MOTOR_DIFF_ENABLE       0       // 1 = 开启巡线差速
 #define MOTOR_DIFF_NEI_XISHU    25      // 内轮最多减 25%（百分比）
 #define MOTOR_DIFF_FANG_XIANG   1       // +1 = delta 为正时右轮是内轮；实车相反改 -1
+
+/* ========== 八、速度闭环（2026-11-10，按审查 §9 第 6 条新增） ========== */
+/* 现状：control() 给出的是**开环占空比**，电池掉压、左右电机个体差异都会让实际轮速跑偏，
+ * 而 motor.c 里 motor_speed_pulse() 早就在算了（cpu0_main.c 每帧调 motor_speed_update），
+ * 只是没人读 -- 这一节就是把这条反馈接上。
+ * 结构：前馈仍是巡线算出来的占空比，PI 只修正「实际轮速 - 目标轮速」的偏差，输出叠加在前馈上。
+ * ★ 默认关闭。SPEED_LOOP_PULSE_PER_DUTY 是必须实测的标定量，拍一个数比开环更危险。
+ *   标定三步：
+ *     ① 车架起来（两轮悬空），SPEED_LOOP_ENABLE 置 1、KP/KI 都先置 0；
+ *     ② 给一个固定占空比（比如 MAX_SPEED）跑 2 s 以上，读 motor_speed_pulse(0)/(1)；
+ *     ③ 每占空比脉冲 = 读到的脉冲/秒 × 1000 / 当时占空比，左右轮各填一次取较小值。
+ *        左右差得远说明机械阻力不同，先查装配，别用闭环硬补。
+ *   标定完再放开 KP（从小往大，到"跟得上且不抖"），最后加 KI 消稳态误差。 */
+#define SPEED_LOOP_ENABLE 0          // 1 = 开启速度闭环；没有标定之前保持 0
+#define SPEED_LOOP_PULSE_PER_DUTY 0  // 每 1000 占空比对应的轮速（脉冲/秒）。★必须实测；0 = 未标定，自动退化为开环
+                                     // 典型量级：满占空比空载约 5 000~15 000 脉冲/秒，具体看电机和编码器线数
+#define SPEED_LOOP_KP 10             // 比例：偏差 1000 脉冲/秒 -> 修正 100 占空比（KP/100）
+#define SPEED_LOOP_KI 20             // 积分：每帧累加 偏差×KI/10000，饱和到 ±SPEED_LOOP_I_LIMIT
+#define SPEED_LOOP_I_LIMIT 300       // 积分限幅（占空比），防长时间堵转把积分憋死
+#define SPEED_LOOP_ZUI_DI_DUTY 250   // 目标占空比低于此值不闭环：起步/停车段轮速反馈不可信，直接开环
+#define SPEED_LOOP_CHA_SHANG_XIAN 400 // 单帧修正量上限（占空比），防一次跳变把车甩出去
 
 #endif /* TIAOCAN_H */

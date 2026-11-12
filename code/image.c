@@ -37,22 +37,28 @@ typedef struct
 {
     int16 n;   // 订正报告 P2-2：image_init 实测值域 0~252，int8 会溢出，故收窄为 int16 而非 int8
 } ding_bi_shu_256;
+/* BFS 队列（审查 §9 第 7 条）：1024 只有一帧像素的 4.5%，大面积连通区一冲满 push 就直接 return，
+ * 连通块被切成两半 -> 块大小算错 -> 该删的没删、该留的删了。扩到 BFS_QUEUE_LEN(4096)，
+ * 512 个 uint16 的代价换掉这个隐患；仍在 CPU0 本地 RAM（DSPR0 72 KB）。
+ * 注意 push 满时依然是「丢弃」而不是覆盖，这是有意的：宁可少扫一块，也不能把队列绕乱。 */
+#pragma section all "cpu0_dsram"
 struct dui
 {
-    uint16 head;   // 队列索引只到 1023，原 uint64 让热路径做 64 位自增（报告 P2-3）
+    uint16 head;   // 队列索引只到 BFS_QUEUE_LEN-1，原 uint64 让热路径做 64 位自增（报告 P2-3）
     uint16 tail;
-    uint16 queue[1024]; //边界
+    uint16 queue[BFS_QUEUE_LEN]; //边界
     uint16 len;
-} q = {0}; //定义1024长度队列
+} q = {0}; //定义 BFS_QUEUE_LEN 长度队列
+#pragma section all restore
 
 void push (uint16 num)
 {
-    if (q.len >= 1024)
+    if (q.len >= BFS_QUEUE_LEN)
         return;
     q.queue[q.tail] = num;
     q.tail++;
     q.len++;
-    if (q.tail == 1024)
+    if (q.tail == BFS_QUEUE_LEN)
         q.tail = 0;
 
 }
@@ -63,7 +69,7 @@ void pop ()
     q.queue[q.head] = 0;
     q.head++;
     q.len--;
-    if (q.head == 1024)
+    if (q.head == BFS_QUEUE_LEN)
         q.head = 0;
 
 }
@@ -510,7 +516,7 @@ int16 last_l_line = -1;          // 上一帧有效左边线列，用于单边线时判断这条线属
 int16 last_r_line = -1;          // 上一帧有效右边线列，用于单边线时判断这条线属于哪一侧
 int16 last_lr_width = -1;        // 上一帧有效赛道宽度（右-左），-1 表示尚无历史，此时不猜边线
 /* 编译期断言（审查 §9.4 第 0 条）：find_line 的返回值是打包值 (左列 << 8) + 右列。
- * MT9V03X_W = 188 时最大 187×256 + 187 = 48,059，远超 int16 上限 32,767 —— 它天生装不进 16 位，
+ * MT9V03X_W = 188 时最大 187×256 + 187 = 48,059，远超 int16 上限 32,767 -- 它天生装不进 16 位，
  * 所以返回类型、调用方接收变量、解包变量都必须是 int32（cpu0_main.c 里是 int32 x）。
  * 审查报告里「改成 int16 省寄存器」的修法会在这里直接溢出：右偏赛道（左列 ≥ 128）翻成负数，
  * 比现状更糟。真要省宽度，只能改成分开出参（左、右各一个指针），不能压缩这个打包值。 */
@@ -634,14 +640,36 @@ int8 find_section (uint8_t p[][MT9V03X_W], int h, uint8 s[][2])
     return sum;
 }
 
+/* 斜率是否可用，取值见 image.h 注释。原来 qing_xie_du() 只有「有值 / -65535」两种结局，
+ * 没法把「宽度超限但边线还在」和「真的爬不上去」分开，结果宽赛道被整帧误杀（审查 P0-1 订正版）。 */
+uint8 qing_xie_du_zhuang_tai = 0;
+
 float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
 {
     //x为参数
+    qing_xie_du_zhuang_tai = 2;     // 先按「爬线失败」记账，真算出斜率再改回 0
     if (x < 0)
         return -65535; //失败回退
     const int32 yuanzuo = x >> 8, yuanyou = x - (yuanzuo << 8);
     int32 lline = x >> 8, rline = x - (lline << 8), lh = MT9V03X_H - 1, rh = MT9V03X_H - 1;
     int8 lfail = 0, rfail = 0;
+    /* 底行宽度分两档（审查 P0-1 订正版 / 复核 §4-A）：
+     *   ① 宽于 XUN_XIAN_ZUI_DA_KUAN_DU(150)：宽到不像赛道（白墙 / 噪声假线 159），按丢线处理，
+     *      保持原来的噪声兜底语义；
+     *   ② 在 MAX_LINE_WIDTH(120) ~ 150 之间：真实宽赛道（底行常在 110~140），只是斜率不可用，
+     *      返回 0 并置状态 1 -- 主循环照常用 lline/rline 算 err 巡线，只关掉 x1*SLOPE_WEIGHT 前馈。
+     * 原写法用同一个 120 判据既限爬线又判整帧成败，宽赛道被一起误杀（P0-1 的真 bug），
+     * 而审查报告「删掉这一行」的修法又会把 159 px 假线放进来算斜率（复核 §4-A 的回归风险）。 */
+    if (rline - lline > XUN_XIAN_ZUI_DA_KUAN_DU)
+    {
+        qing_xie_du_zhuang_tai = 2;     // 噪声兜底：不存在的赛道
+        return -65535;
+    }
+    if (rline - lline > MAX_LINE_WIDTH)
+    {
+        qing_xie_du_zhuang_tai = 1;     // 宽赛道：斜率不可用，边线仍可巡线
+        return 0.0f;
+    }
     /* 边界不再作为退出条件（251e810 报告 §4.1）：原来 rline 贴 187 / lline 贴 0 就跳出循环，
      * 随后因高度差为 0 整帧返回 -65535，而单边线贴边恰恰是最常见的情况，斜率因此整帧失效。
      * 改为贴边后竖直继续爬，只在真正可能越界时钳住列号（rline+1 / lline-1 的下标防护）。 */
@@ -695,7 +723,8 @@ float qing_xie_du (int32 x, uint8_t image[][MT9V03X_W])
     if (rline == -1 && lline != -1)
         rline = min(187, lline+LINEWIDTH);
     if (MT9V03X_H - 1 - lh == 0 || MT9V03X_H - 1 - rh == 0 || lline == -1 || rline == -1)
-        return -65535;
+        return -65535;                      // 状态保持 2：真爬不上去，主循环必须判丢线
+    qing_xie_du_zhuang_tai = 0;
     return (((float) (yuanzuo - lline) / (MT9V03X_H - 1 - lh)) + ((float) (yuanyou - rline) / (MT9V03X_H - 1 - rh))) / 2;
 }
 uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[MAX_BOX][4][2])
@@ -769,7 +798,9 @@ uint8 find_boxes (uint8_t image[][MT9V03X_W], uint8 box[MAX_BOX][4][2])
     }
     if (flag == 1)
     {
-        if (box[tmp][0][1] - box[tmp][3][1] >= MIN_BOX_HEIGHT && tmp < MAX_BOX)
+        /* 先判 tmp < MAX_BOX 再读 box[tmp]（复核报告 P3）：原写法先读后判，
+         * tmp 已等于 MAX_BOX 时会读到 box[5][...]，越界 8 B。短路求值保证不再读。 */
+        if (tmp < MAX_BOX && box[tmp][0][1] - box[tmp][3][1] >= MIN_BOX_HEIGHT)
             tmp++;
     }
     return tmp;

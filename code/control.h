@@ -3,7 +3,8 @@
 void control(uint32 tick,int16 delta,int speed);
 
 void pid_reset (void);
-int16 pid(void);
+int16 pid(uint32 dt_zhen);      // dt_zhen = 本帧与上一帧的间隔，单位 10 ns（20 ms = 2,000,000）
+                                // 丢帧时用它折算 D、跳过积分，见 control.c 注释
 void stop(void);
 
 /* ==================== 编码器差速转弯（2026-11-06） ==================== */

@@ -76,7 +76,17 @@ seekfree_assistant_camera_struct camera_obj;   // 逐飞助手摄像头放 CPU0 RAM
 //摄像头部分暂时放在这里
 extern volatile int16 err;
 uint8_t image_copy[MT9V03X_H][MT9V03X_W];              // 188×120 = 22560 字节备份缓冲区（二值化/去噪/找线用，会被就地改写）
+#pragma section all restore
+/* image_raw 必须放在 cpu0_dsram 之外（审查报告 P0-1 / §8 第 2 条，这是本轮最要紧的一条）
+ * DSPR0 只有 72 KB，扣掉 CSA 8k + ustack 2k + istack 1k + heap 2k + 2×256 B 预留后可用 58,880 B；
+ * 而 cpu0_dsram 里躺着三块整帧缓冲：image_copy 22,560 + last_image_copy 22,560 + image_raw 22,560 = 67,680 B，
+ * 溢出 8,800 B（8.6 KiB）--链接阶段就该报段放不下，之前没发现是因为没人按 LSL 口径核过。
+ * 本工程 LSL 的 LCF_DEFAULT_HOST = CPU1，去掉 pragma 后本变量自动落 DSPR1（120 KB），
+ * CPU1 读它是本核本地访问（图传拷贝更快），CPU0 每帧写一次走 SRI，代价约 0.2~0.4 ms/帧，可接受。
+ * 两条禁止：① 不要把 image_raw 改回 cpu0_dsram；② 不要为了省 RAM 删 last_image_copy，
+ * 它是二值化失败时整帧回退旧图的唯一来源（image.c 的回退分支，CONSIST_FAIL_MAX=5）。 */
 uint8_t image_raw[MT9V03X_H][MT9V03X_W];               // 原始灰度帧快照，仅供逐飞助手图传，全程不做二值化
+#pragma section all "cpu0_dsram"
 
 /* ---------------- 丢线记忆 + 缓降速度（251e810 报告 §5.1 / §7.4 第 6 条） ----------------
  * 旧写法丢线就回中：车顺着上一次的偏差直直冲出去，"回中"等于放弃追赶。
@@ -104,6 +114,12 @@ static int diu_xian_jiang_su (void)
 {
     if (diu_xian_zhen < 255)
         diu_xian_zhen++;
+
+    /* 丢线超时停车（修复版 tiaocan.h 的 DIU_XIAN_TING_CHE_ZHEN，审查 §9 第 6 条）：
+     * 缓降最低只到 DIU_XIAN_ZUI_DI_SU(150)，150 帧（约 3 s）还找不到线，说明已经冲出赛道、
+     * 摄像头失效或者车被架空，继续给电只会把车怼到墙上。这里直接返回 0 停住，等人工复位。 */
+    if (diu_xian_zhen > DIU_XIAN_TING_CHE_ZHEN)
+        return 0;
 
     if (diu_xian_zhen == 1)                              // 第 1 帧：直接沿用丢线前的车速
         return (int)diu_xian_su_du;
@@ -199,33 +215,42 @@ int core0_main (void)
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
         {
             mt9v03x_finish_flag = 0;            // 先清标志，再拷数据
+            /* 本帧与上一帧的间隔（10 ns 单位），供 pid() 做丢帧折算（审查报告 §4.2 / §8 第 5 条）。
+             * 摄像头 50 fps 固定 20 ms 送帧，处理超过 20 ms 就丢帧，控制周期只会是 20/40/60 ms。 */
+            uint32 dt_zhen = (uint32)(now_ticks - (uint32)last_frame);
+
+            /* ---------------- 图传握手（一）：先等 CPU1 拷完，再覆盖 image_raw ----------------
+             * 旧写法把忙等放在两次 memcpy 之后，真正的撕裂窗口（这里）根本没被盖住，
+             * 而且等的是「CPU1 开始拷」而不是「拷完」。现在 CPU1 的 busy 只覆盖 memcpy
+             * （约 0.2 ms，见 cpu1_main.c），所以这里正常几十 us 就过；
+             * 超时只是放弃本帧保护、照样覆盖，绝不把主循环钉死。 */
+            if (busy)
+            {
+                uint32 wait_start = system_getval();
+                while (busy && (system_getval() - wait_start) < TU_CHUAN_CHAO_SHI)
+                {
+                    // 等 CPU1 把上一批 image_raw 拷进发送缓冲
+                }
+            }
+
             /* 一次取原始帧，分两路用：image_raw 给逐飞助手看原始灰度图（不做任何处理），
              * image_copy 给二值化/找线用。两份内容在拷贝当时完全相同，之后互不影响。 */
             memcpy(image_raw,  mt9v03x_image, MT9V03X_IMAGE_SIZE);  // 此刻 DMA 已 disable，到下一个 VSYNC 前 mt9v03x_image 不会被写
             memcpy(image_copy, image_raw,     MT9V03X_IMAGE_SIZE);
             last_frame = now_ticks;
 
+            copy_flag++;                        // 攒帧计数：满 ZU_SE_ZHEN_SHU 后由 CPU1 取走并清零
+
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
 
-            /* ---------------- 图传握手（审查 §9.4 第 8 条 / N-8） ----------------
+            /* ---------------- 图传握手（二）：批次交接 ----------------
              * 2026-11-10 改：逐飞助手改传「原始灰度图像」，不再传二值化后的图。
-             * CPU1 现在从 image_raw 拷贝（见 cpu1_main.c），而 image_raw 只在上方 DMA 完成窗口里写入、从不被
-             * double_value() / 去噪 / 找线改动，因此图传与图像处理完全解耦，上位机看到的是摄像头真实画面。
-             * busy 仍由 CPU1 在 memcpy 之前置位、发完之后清，下面这段忙等盖住拷贝窗口，防止上下两帧拼接。
-             * 耗时口径不变：MT9V03X 灰度与二值图都是 1 B/像素，一帧 22 560 B / 115200 8N1 ≈ 2.0 s，
-             * ZU_SE_ZHEN_SHU=250 帧约 5 s 攒一次，图传约 5 s 一帧；要更实时只能提高波特率或减小帧尺寸。 */
-            copy_flag++;
-            if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
-            {
-                uint32 wait_start = system_getval();    // 忙等计时起点，单位 10 ns
-                while (copy_flag >= ZU_SE_ZHEN_SHU && !busy
-                        && (system_getval() - wait_start) < TU_CHUAN_CHAO_SHI)
-                {
-                    //wait（最多 50 ms）
-                }
-                if (copy_flag >= ZU_SE_ZHEN_SHU && !busy)
-                    copy_flag = 0;   // 超时兜底：放弃本帧图传，避免下一帧重复等待
-            }
+             * 2026-11-12 修（审查报告 §5 / §8 第 3 条，双端一起改）：
+             *   旧写法 CPU0 在这里 busy 忙等，条件却是 !busy -- 等的是「CPU1 开始拷」，方向反了；
+             *   而且 busy 覆盖「拷贝 + 1.958 s 发送」，与 50 ms 超时差 39 倍，每次必撞超时。
+             *   现在握手只剩两件事：① 上面那段「拷完再覆盖」（在帧顶，超时 5 ms）；
+             *   ② 计数满 ZU_SE_ZHEN_SHU 就交给 CPU1，由 CPU1 拷进本地缓冲后自己清零。
+             * CPU0 不再忙等，发送的 1.96 s 期间照常跑控制，一帧控制都不会因此被拖慢。 */
 
             if (!image_valid)                   // 二值化已判不可信（连续失败/硬阈值回退），白线大概率已丢，不再拿它算 err
             {
@@ -247,12 +272,28 @@ int core0_main (void)
                 x = find_line(image_copy, tmp);
             }
             float x1 = qing_xie_du(x, image_copy);
+            /* 斜率三态（image.h / 修复版 qing_xie_du_zhuang_tai，复核报告 §4-A 确认的订正口径）
+             *   0 = 斜率有效，x1 直接用；
+             *   1 = 底行宽度 120~150，真实宽赛道：x1 强制归零（只关前馈，err 照旧巡线），不判丢线；
+             *   2 = 爬线失败 / 底行宽于 150（白墙、低对比噪声假线 159）：必须判丢线。
+             * 旧版把 1 和 2 都当 -65535 处理，宽赛道因此被整帧误杀；而审查报告建议的「删掉外层判断」
+             * 又会把 159 px 假线放进来算斜率、经 ×55 前馈直接打舵。所以这里显式看状态码，
+             * 不比 -65535 的哨兵值判断意图。
+             * 另：x1 的量纲是「像素/行」的斜率（典型 0.1~2.0，极值约 3.7），
+             * 所以 SLOPE_LIMIT 必须按斜率量纲取（3.0）-- 旧的 100 用在斜率上永远不触发，
+             * 所谓「斜率越界保护」形同虚设（复核报告 P1-6）。 */
+            if (qing_xie_du_zhuang_tai != 0)
+                x1 = 0.0f;
             int lline = (x >> 8) & 0xFF; /* 左边界列 0~187 */
             int rline = x & 0xFF; /* 右边界列 0~187 */
             /* 反色帧兜底（审查 N-2 / P2-5）：白墙、白斑、大面积反光会把极性校正骗去整帧取反，
              * 取反后「线」其实是整幅背景，宽度顶到 188，err 反而变好看（≈0），车会顺着墙跑。
              * 所以反色帧的赛道宽度超过 FAN_SE_ZUI_DA_KUAN_DU 就按丢线处理，不去追这面墙。 */
-            if (x < 0 || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX
+            /* 丢线判据（修复版状态码口径）：找不到线 / 斜率状态=2（爬线失败或宽于 150）
+             * / 斜率有效但越界 / 边线贴边 / 反色帧过宽。状态 1（宽赛道）不在其中 -- 它就该继续巡线。 */
+            if (x < 0 || qing_xie_du_zhuang_tai == 2
+                    || x1 < -SLOPE_LIMIT || x1 > SLOPE_LIMIT
+                    || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX
                     || (image_fan_se && (rline - lline) > FAN_SE_ZUI_DA_KUAN_DU))
             {
                 control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
@@ -260,14 +301,14 @@ int core0_main (void)
                 continue;
             }
             err = ((lline + rline) - IMAGE_CENTER);
-            int delta = pid() + x1 * SLOPE_WEIGHT;
+            int delta = pid(dt_zhen) + x1 * SLOPE_WEIGHT;     // pid 带帧间隔：丢帧时 I 不累、D 按时间折算
             if (delta > DELTA_LIMIT)
                 delta = DELTA_LIMIT;
             if (delta < -DELTA_LIMIT)
                 delta = -DELTA_LIMIT;
             /* 落后帧降速（审查 N-2）：image_lag=1 表示这帧边线来自上一帧旧图（最多老 5 帧、约 100 ms），
              * 按原速冲这 100 ms 正好是出赛道的高发段，先按 LUO_HOU_JIANG_SU_PCT 降速换反应时间；
-             * 同时不刷新丢线记忆 —— 记忆必须是「新数据」算出来的，否则丢线时接管的是过期偏置。 */
+             * 同时不刷新丢线记忆 -- 记忆必须是「新数据」算出来的，否则丢线时接管的是过期偏置。 */
             int su_du = MAX_SPEED;
             if (image_lag)
                 su_du = MAX_SPEED * (100 - LUO_HOU_JIANG_SU_PCT) / 100;

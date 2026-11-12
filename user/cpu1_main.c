@@ -69,15 +69,18 @@ void core1_main (void)
         if (copy_flag>=ZU_SE_ZHEN_SHU)
         {           // 由 CPU0 置位的"可发送"标志
             /* 2026-11-10 改：图传改传原始灰度图，数据源从 image_copy（二值化后）换成 image_raw（原始帧）。
-             * busy 仍提到 memcpy 之前（审查 N-8 / §9.4 第 8 条）：覆盖「拷贝 + 发送」全程，
-             * 防止 CPU0 在拷贝窗口里刷新 image_raw 而拼出两帧。copy_flag 在拷贝完成后清零，
-             * 下一次要等新的 250 帧。发送缓冲 copy 在 CPU1 本地 RAM，发送期间不会被改写。 */
+             * 2026-11-12 修（审查报告 §5 / §8 第 3 条）：
+             *   busy 只在 memcpy 期间为 1 -- 拷贝约 0.2 ms，发送要 1.958 s，旧写法让 CPU0 的
+             *   50 ms 超时跟 1.96 s 的窗口对齐，39 倍失配，等于 CPU0 每次都要白等一轮。
+             *   现在拷完立刻清 busy，CPU0 侧「拷完再覆盖 image_raw」只要几十 us 就能过；
+             *   发送期间 CPU0 正常跑控制与下一帧图像处理，两者彻底解耦。
+             * copy_flag 在拷贝完成后清零：下一次要再攒 250 帧（约 5 s）才会再传一次。 */
             busy=1;
             memcpy(copy, image_raw, MT9V03X_IMAGE_SIZE);     // 原始灰度帧，不是二值化图
-
+            busy=0;                                          // 拷贝窗口到此结束（发送不计入）
             copy_flag=0;
-            seekfree_assistant_camera_send(&camera_obj);
-            busy=0;
+
+            seekfree_assistant_camera_send(&camera_obj);     // 阻塞约 1.96 s，只占 CPU1
         }
     }
 }

@@ -16,7 +16,7 @@ void stop (void)
 volatile int16 err = 0;
 int16 P, I, D, last_err, last_last_err;
 /* 转弯后的舵机冷却帧（251e810 报告 §4.2）。turn() 收尾会把舵机回中，
- * 但紧随其后的一帧 control() 会拿「转弯前留下的 err」立刻反打舵 —— 刚转过来的车头
+ * 但紧随其后的一帧 control() 会拿「转弯前留下的 err」立刻反打舵 -- 刚转过来的车头
  * 又被掰回去，表现为弯道转不干净、出弯画龙。冷却期内 control() 只回中直行。 */
 volatile uint8 turn_leng_que_zhen = 0;
 void pid_reset (void)
@@ -25,19 +25,35 @@ void pid_reset (void)
     last_err = 0;
     last_last_err = 0;
 }
-int16 pid (void)
+int16 pid (uint32 dt_zhen)
 {
     int16 output;
     float kp = PID_KP, ki = PID_KI, kd = PID_KD;
-    if (abs(err) < PID_INTEGRAL_GATE)
-    {          // 误差小时才积分
+    float d_raw;
+    float dt_bi = 1.0f;
+    uint8 dan_zhen;
+
+    /* 丢帧折算（复核报告 §3.4 / §4.2 / §8 第 5 条）
+     * 摄像头 MT9V03X_FPS_DEF = 50 → 固定 20 ms 送一帧，主循环是「等帧 → 处理 → 再等帧」。
+     * 处理一旦超过 20 ms 就丢帧，控制周期只会离散成 20 / 40 / 60 ms，不是 1/处理时间 那种连续帧率。
+     * 原实现既没有 dt，又让 I 按帧累加、D 按帧差分：丢了 1 帧，D 拿到的是「跨两帧的误差差」，
+     * 数值相当于翻倍 -- 这就是「丢一帧后 D 项出尖峰」的根，不是 PID 参数没整定好。
+     * 现在：丢帧的这帧不积分，D 按「标称周期 / 实际周期」折算；正常 20 ms 帧的行为与改动前完全一致。
+     * dt_zhen 单位 10 ns（20 ms = 2,000,000），超过 1.5 倍标称即判丢帧。 */
+    dan_zhen = (dt_zhen > (uint32)(PID_DT_NOMINAL_10NS + PID_DT_NOMINAL_10NS / 2)) ? 1 : 0;
+    if (dan_zhen && dt_zhen < PID_DT_MAX_10NS)          // 断流那种秒级间隔不折算，按 1 帧处理
+        dt_bi = (float)PID_DT_NOMINAL_10NS / (float)dt_zhen;
+
+    if (!dan_zhen && abs(err) < PID_INTEGRAL_GATE)
+    {          // 误差小时才积分；丢帧时不积分，否则按帧累加等于把积分增益放大
         I += err;
         I = min(I, PID_I_LIMIT);
         I = max(I, -PID_I_LIMIT);
     }
     P = err;
     //I += err;
-    D = (err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU);
+    d_raw = ((err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU)) * dt_bi;
+    D = (int16)d_raw;
     P = min(P, PID_P_LIMIT);
     P = max(P, -PID_P_LIMIT);
     I = min(I, PID_I_LIMIT);
@@ -50,6 +66,51 @@ int16 pid (void)
 
     return output;
 }
+/* ===================================================================================================================
+ * 速度闭环（2026-11-10，按审查 §9 第 6 条新增）
+ * 前馈：巡线/丢线记忆算出来的目标占空比
+ * 反馈：motor_speed_pulse()，每 10 ms 由 motor_speed_update() 刷新一次
+ * 输出：叠加 PI 修正后的占空比，仍经 drive() 唯一出口
+ * 关掉的条件有两个：SPEED_LOOP_ENABLE=0，或 SPEED_LOOP_PULSE_PER_DUTY 还没标定（=0）。
+ * 后者是有意的 -- 宏开着但没标定就退化成开环，不会因为忘记标定把车跑飞。
+ * =================================================================================================================== */
+#if SPEED_LOOP_ENABLE && (SPEED_LOOP_PULSE_PER_DUTY > 0)
+#define SPEED_LOOP_OK 1
+#else
+#define SPEED_LOOP_OK 0
+#endif
+
+#if SPEED_LOOP_OK
+static int32 sp_ji_fen[2] = {0, 0};     // [0] 左轮 [1] 右轮，单位：占空比
+
+static int32 su_du_huan (uint8 ce, int32 mu_biao_duty)
+{
+    int32 mu_biao_pulse, wu_cha, xiu;
+
+    if (mu_biao_duty < SPEED_LOOP_ZUI_DI_DUTY)      // 起步/停车段：轮速反馈不可信，直接开环
+    {
+        sp_ji_fen[ce] = 0;
+        return mu_biao_duty;
+    }
+
+    mu_biao_pulse = mu_biao_duty * SPEED_LOOP_PULSE_PER_DUTY / 1000;   // 目标轮速（脉冲/秒）
+    wu_cha = mu_biao_pulse - (int32)motor_speed_pulse(ce);             // 正 = 实际慢了，该加油
+
+    sp_ji_fen[ce] += wu_cha * SPEED_LOOP_KI / 10000;
+    if (sp_ji_fen[ce] >  SPEED_LOOP_I_LIMIT) sp_ji_fen[ce] =  SPEED_LOOP_I_LIMIT;
+    if (sp_ji_fen[ce] < -SPEED_LOOP_I_LIMIT) sp_ji_fen[ce] = -SPEED_LOOP_I_LIMIT;
+
+    xiu = wu_cha * SPEED_LOOP_KP / 100 + sp_ji_fen[ce];                // 修正量（占空比）
+    if (xiu >  SPEED_LOOP_CHA_SHANG_XIAN) xiu =  SPEED_LOOP_CHA_SHANG_XIAN;
+    if (xiu < -SPEED_LOOP_CHA_SHANG_XIAN) xiu = -SPEED_LOOP_CHA_SHANG_XIAN;
+
+    xiu += mu_biao_duty;                                              // 前馈为主，PI 只做修正
+    if (xiu < 0) xiu = 0;
+    if (xiu > MOTOR_PWM_MAX) xiu = MOTOR_PWM_MAX;
+    return xiu;
+}
+#endif
+
 void control (uint32 tick, int16 delta, int speed)
 {
     int32 ji_chu = (speed > 0) ? (int32)speed : 0;      // 负 speed 会让无符号占空比变成极大值，先挡掉
@@ -85,6 +146,12 @@ void control (uint32 tick, int16 delta, int speed)
         else if (zhuan < 0)
             zuo = ji_chu * (100 - jian) / 100;                      // 左转，左轮是内轮
     }
+#endif
+
+#if SPEED_LOOP_OK
+    /* 速度闭环：左右轮各自修正（审查 §9 第 6 条）。MOTOR_ZUO/MOTOR_YOU 见 motor.h */
+    zuo = su_du_huan(MOTOR_ZUO, zuo);
+    you = su_du_huan(MOTOR_YOU, you);
 #endif
 
     drive((int16)zuo, (int16)you);                                  // 两轮统一出口，右轮从此有输出
@@ -211,7 +278,7 @@ int16 turn (int16 degrees)
     /* ---- 左右轮每度脉冲差，用浮点算，避免整数截断把小量吃成 0 ---- */
     /* 期望「每度外轮 - 内轮脉冲差」= 轮距弧长 × 每毫米脉冲 = T × (π/180) × 每毫米脉冲。
      * 原来这一行少了 (π/180)：算出 8282（其实单位是「脉冲/mm × mm」，根本不是「每度」），
-     * 比正确值大约 57 倍，误差项长期顶在饱和值上，PI 变成恒定偏置 —— 台架上方向对、看着也准，
+     * 比正确值大约 57 倍，误差项长期顶在饱和值上，PI 变成恒定偏置 -- 台架上方向对、看着也准，
      * 但闭环从来没闭合过（审查 P0-1，数值 8282 与源码一致）。
      * 注意：别按审查报告那一版改成 (int32)(×1000) 定点：那只是把增益砍到 1/8，不是修量纲。 */
     xi_wang_cha  = mei_mm_chong * (float)TURN_LUN_JU_MM * 3.14159265f / 180.0f;
@@ -308,7 +375,7 @@ int16 turn (int16 degrees)
         }
         /* 注意：TC264 上 unsigned long 就是 32 位，100000UL 不会自动升 64 位，
          * 8 位/16 位宏一乘就溢出，所以统一用 uint64 强转再比。
-         * TURN_HUA_XING_MS = 0 时这一支永远成立 —— 与"不滑行"的语义一致，只是编译器会提示。 */
+         * TURN_HUA_XING_MS = 0 时这一支永远成立 -- 与"不滑行"的语义一致，只是编译器会提示。 */
         if (dao_dian)
         {
             if (TURN_HUA_XING_MS == 0) break;                      // 不滑行：到点立刻收工
