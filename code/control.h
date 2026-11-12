@@ -26,3 +26,4 @@ extern volatile int32 turn_lei_ji_chong[2]; // [0]左轮 [1]右轮，本次累计脉冲
 extern volatile int16 turn_shi_ji_jiao_du;  // 按两轮平均里程反算的实际转角
 extern volatile int16 turn_shi_ji_ban_jing; // 由实测左右轮速比反推的半径（mm）
 extern volatile uint8 turn_jie_guo;         // 结果码，见 turn_jie_guo_enum
+extern volatile uint8 turn_leng_que_zhen;   // 转弯冷却帧计数(>0 暂停路口检测，防同一路口二次触发)
