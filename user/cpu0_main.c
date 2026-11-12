@@ -192,6 +192,7 @@ int core0_main (void)
 
     uint32 start_ticks = system_getval();       // ← 发车那一刻打时间戳
     uint8 if_go = 0;       //是否发车
+    uint8 lu_kou_lian_xu = 0;   // 连续识别到路口的帧数（触发判据见 tiaocan.h 的 LU_KOU_QUE_REN_ZHEN）
     last_frame = start_ticks;   // last_frame 为最近一帧时间戳，初始化成发车时刻供断流保护使用
     while (TRUE)       //需要添加帧同步信号防止撕裂
     {
@@ -259,6 +260,32 @@ int core0_main (void)
                 continue;
             }
             xiao_qu_yu_shan_chu(image_copy);
+
+            /* ---------------- 路口检测 → 触发转弯（2026-11-12 新增） ----------------
+             * find_boxes() 在底行出现宽度 >= ZUI_XIAO_LU_KOU_KUAN_DU 的白段时返回 255（路口）。
+             * 这里直接调 find_boxes 而不是 image_read：后者会对每个框跑一遍 CNN，主循环吃不消，
+             * 路口触发只需要 255 这个结果。连续 LU_KOU_QUE_REN_ZHEN 帧都识别到才确认（防单帧噪声）。
+             * 确认后调用 turn(LU_KOU_TURN_JIAO_DU)：turn() 内部先直行 TURN_TI_QIAN_MM 再差速转弯，
+             * 所以实际转弯点自动落在路口前 TURN_TI_QIAN_MM 处（阻塞执行，期间不巡线）。
+             * 转弯收尾会置 turn_leng_que_zhen，冷却期内不检测，防止同一个路口二次触发。 */
+            if (LU_KOU_TURN_JIAO_DU != 0 && turn_leng_que_zhen == 0)
+            {
+                uint8 lu_kou_box[MAX_BOX][4][2];
+                if (find_boxes(image_copy, lu_kou_box) == 255)
+                {
+                    if (lu_kou_lian_xu < 250) lu_kou_lian_xu++;
+                    if (lu_kou_lian_xu >= LU_KOU_QUE_REN_ZHEN)
+                    {
+                        lu_kou_lian_xu = 0;
+                        diu_xian_zhen  = 0;                 // 清丢线状态，别让转弯后的旧记忆接管
+                        diu_xian_delta = 0;
+                        turn(LU_KOU_TURN_JIAO_DU);          // 阻塞：先提前量直行，再差速转弯
+                        continue;                           // 本帧到此为止，下一帧从冷却直行重新开始
+                    }
+                }
+                else
+                    lu_kou_lian_xu = 0;                     // 中断连续计数，重新攒
+            }
             int tmp = MT9V03X_H - 1;
             int32 x = find_line(image_copy, MT9V03X_H - 1);
             while (x == -1)

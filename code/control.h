@@ -18,6 +18,8 @@ typedef enum
 
 int16 turn (int16 degrees);         // degrees: ±TURN_ZUI_DA_JIAO_DU（默认 ±360），正 = 右转，负 = 左转；阻塞执行
                                     // 常用值：90 直角弯、120/135 大弯、180 掉头、300 绕行近一圈
+                                    // 2026-11-12：触发后先直行 TURN_TI_QIAN_MM mm 再开始转弯（提前路口转弯），
+                                    //  距离/速度/超时在 tiaocan.h 第 6.6 节；TURN_TI_QIAN_MM=0 关闭提前量
                                     // 越界会压到边界值执行；< TURN_ZUI_XIAO_JIAO_DU 直接返回 0 不动车
 
 extern volatile int32 turn_lei_ji_chong[2]; // [0]左轮 [1]右轮，本次累计脉冲

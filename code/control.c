@@ -161,6 +161,8 @@ void control (uint32 tick, int16 delta, int speed)
 
 /* ===================================================================================================================
  * 编码器差速转弯  turn(degrees)      前轮舵机定圆心 + 后轮左右电机差速补半径
+ * 2026-11-12 新增第 0 步「提前量直行」：触发后先直行 TURN_TI_QIAN_MM 再转弯，
+ * 即转弯起始点前移到路口前这一段距离处（参数见 tiaocan.h 第 6.6 节）。
  *
  * 为什么要混合
  *   纯阿克曼：舵机打死半径也下不来，180 度要 1 m 以上空间；
@@ -295,6 +297,47 @@ int16 turn (int16 degrees)
     if (cc_nei < TURN_NEI_LUN_ZUI_DI) cc_nei = TURN_NEI_LUN_ZUI_DI;                     // 内轮太小等于刹车，留底
     cc_l = (fang_xiang > 0) ? cc_wai : cc_nei;                                          // 右转圆心在右，左轮是外轮
     cc_r = (fang_xiang > 0) ? cc_nei : cc_wai;
+
+    /* ---- 0. 提前量直行（2026-11-12 新增）：提前路口 TURN_TI_QIAN_MM 开始转弯 ----
+     * 摄像头识别到路口时，车头离路口还有一段距离；若在识别点立刻停车转弯，转弯圆心
+     * 就落在识别点上。本段让车以 TURN_TI_QIAN_SU_DU 直行 TURN_TI_QIAN_MM 毫米后，
+     * 才进入下面的「停车打舵 + 差速转弯」流程，转弯起始点因此前移到路口前
+     * TURN_TI_QIAN_MM 处。里程用双轮编码器平均脉冲闭环；编码器失效或堵转由
+     * TURN_TI_QIAN_CHAO_SHI_MS 兜底，超时后照常进入转弯，不会一路直冲。
+     * TURN_TI_QIAN_MM = 0 时本段整体跳过，行为与改动前完全一致。 */
+    if (TURN_TI_QIAN_MM > 0)
+    {
+        float  mei_mm_zhi    = (float)TURN_MEI_LUN_QUAN_CHONG_MEI_DU / (float)TURN_LUN_ZHOU_MM;
+        int32  zhi_lei_ji[2] = {0, 0};      // [0]左轮 [1]右轮，直行段各自累计脉冲（绝对值）
+        int16  zhi_shang_ci[2];
+        uint32 zhi_t0        = system_getval();
+        uint8  zhi_i;
+        int16  zhi_bu;
+
+        zhi_shang_ci[0] = encoder_get_count(TURN_ENCODER_ZUO);
+        zhi_shang_ci[1] = encoder_get_count(TURN_ENCODER_YOU);
+        turn_tuo_zhan(TURN_TI_QIAN_SU_DU, TURN_TI_QIAN_SU_DU);      // 两轮同占空比 = 直行
+
+        while (TRUE)
+        {
+            int32 zhi_he = 0;
+            for (zhi_i = 0; zhi_i < 2; zhi_i++)
+            {
+                zhi_bu = (int16)(encoder_get_count(zhi_i ? TURN_ENCODER_YOU : TURN_ENCODER_ZUO)
+                                 - zhi_shang_ci[zhi_i]);
+                zhi_shang_ci[zhi_i] = (int16)(zhi_shang_ci[zhi_i] + zhi_bu);
+                if (zhi_bu > TURN_BU_CHONG_SHANG_XIAN || zhi_bu < -TURN_BU_CHONG_SHANG_XIAN)
+                    zhi_bu = 0;                                     // 野值丢弃，判据与转弯段一致
+                zhi_lei_ji[zhi_i] += turn_qu_jue_dui(zhi_bu);
+                zhi_he += zhi_lei_ji[zhi_i];
+            }
+            if ((float)zhi_he / 2.0f / mei_mm_zhi >= (float)TURN_TI_QIAN_MM)
+                break;                                              // 双轮平均里程到达提前量
+            if ((uint64)(system_getval() - zhi_t0) > (uint64)TURN_TI_QIAN_CHAO_SHI_MS * 100000ULL)
+                break;                                              // 超时兜底，照样进入转弯
+        }
+        turn_tuo_zhan(0, 0);                                        // 到点停车，交给下面的打舵流程
+    }
 
     /* ---- 1. 先停车打舵，等前轮到位再起步 ---- */
     turn_tuo_zhan(0, 0);
