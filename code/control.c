@@ -300,7 +300,7 @@ int16 turn (int16 degrees)
 
     /* ---- 0. 触发转弯后的直行段（2026-11-12 新增；2026-11-13 注释方向订正）----
      * 摄像头识别到路口后，先以 TURN_TI_QIAN_SU_DU 直行 TURN_TI_QIAN_MM 毫米，
-     * 才进入下面的「停车打舵 + 差速转弯」流程：转弯点在识别点【之后】TURN_TI_QIAN_MM 处，
+     * 才进入下面的「保持速度打舵 + 差速转弯」流程：转弯点在识别点【之后】TURN_TI_QIAN_MM 处，
      * 不是路口之前（原注释「前移到路口前」与实现方向相反，已订正）。
      * 里程用双轮编码器平均脉冲闭环；编码器失效或堵转由
      * TURN_TI_QIAN_CHAO_SHI_MS 兜底，超时后照常进入转弯，不会一路直冲。
@@ -336,11 +336,12 @@ int16 turn (int16 degrees)
             if ((uint64)(system_getval() - zhi_t0) > (uint64)TURN_TI_QIAN_CHAO_SHI_MS * 100000ULL)
                 break;                                              // 超时兜底，照样进入转弯
         }
-        turn_tuo_zhan(0, 0);                                        // 到点停车，交给下面的打舵流程
+        turn_tuo_zhan(TURN_JIN_WAN_SU_DU, TURN_JIN_WAN_SU_DU);      // 到点不停车：保持进弯速度（2026-11-13）
     }
 
-    /* ---- 1. 先停车打舵，等前轮到位再起步 ---- */
-    turn_tuo_zhan(0, 0);
+    /* ---- 1. 打舵（2026-11-13 改：不停车，保持进弯速度；
+     *        TURN_JIN_WAN_SU_DU = 0 时恢复旧行为「先停车再打舵」） ---- */
+    turn_tuo_zhan(TURN_JIN_WAN_SU_DU, TURN_JIN_WAN_SU_DU);
     pwm_set_duty(ATOM0_CH1_P33_9,
                  (uint32)((int32)SERVO_CENTER + (int32)fang_xiang * (int32)TURN_STEER_DUTY));
     system_delay_ms(TURN_DA_DUO_MS);
