@@ -211,6 +211,9 @@ int core0_main (void)
         {
             control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
             pid_reset();
+            /* 2026-11-13 审查订正（§8 漏报）：断流输出后跳过本轮帧分支。
+             * 否则同轮 finish_flag=1（如 turn() 阻塞后的首帧）会再次 control() 覆盖回中降速输出。 */
+            continue;
         }
 
         if (mt9v03x_finish_flag)                 // 只有 DMA 搬完了一整帧才进入
@@ -266,7 +269,7 @@ int core0_main (void)
              * 这里直接调 find_boxes 而不是 image_read：后者会对每个框跑一遍 CNN，主循环吃不消，
              * 路口触发只需要 255 这个结果。连续 LU_KOU_QUE_REN_ZHEN 帧都识别到才确认（防单帧噪声）。
              * 确认后调用 turn(LU_KOU_TURN_JIAO_DU)：turn() 内部先直行 TURN_TI_QIAN_MM 再差速转弯，
-             * 所以实际转弯点自动落在路口前 TURN_TI_QIAN_MM 处（阻塞执行，期间不巡线）。
+             * 所以实际转弯点在识别点之后 TURN_TI_QIAN_MM 处、不是路口之前（2026-11-13 订正；阻塞执行，期间不巡线）。
              * 转弯收尾会置 turn_leng_que_zhen，冷却期内不检测，防止同一个路口二次触发。 */
             if (LU_KOU_TURN_JIAO_DU != 0 && turn_leng_que_zhen == 0)
             {

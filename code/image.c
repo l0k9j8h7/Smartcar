@@ -38,9 +38,10 @@ typedef struct
     int16 n;   // 订正报告 P2-2：image_init 实测值域 0~252，int8 会溢出，故收窄为 int16 而非 int8
 } ding_bi_shu_256;
 /* BFS 队列：实车裁决 2026-11-12 用 BFS_QUEUE_LEN(1024)，仍在 CPU0 本地 RAM（DSPR0 72 KB）。
- * 审查报告第 9 节第 7 条曾建议 1024->4096（怕大连通区冲满、push 丢弃后块被切断）；
- * 实车连通块没有那么大，1024 已够用，省下 6 KB DSPR0（该段本就被三块整帧缓冲吃紧）。
- * 注意 push 满时依然是「丢弃」而不是覆盖，这是有意的：宁可少扫一块，也不能把队列绕乱。 */
+ * 2026-11-13 判定：队列不会溢出。push() 有 q.len >= BFS_QUEUE_LEN 满保护，pop() 有空保护，
+ * head/tail 到 BFS_QUEUE_LEN 即回绕，queue[] 定长：索引恒在 [0, BFS_QUEUE_LEN)，不越界、
+ * 不覆盖已入队元素。实车连通块远小于 1024，队列不会满，无需扩 4096、无需加 q.overflow 标志。
+ * 审查报告曾建议 1024->4096（怕大连通区冲满、push 丢弃后块被切断），该前提不成立，不采纳。 */
 #pragma section all "cpu0_dsram"
 struct dui
 {
