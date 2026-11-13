@@ -59,6 +59,7 @@
 #include"image.h"
 #include"tiaocan.h"
 #include"motor.h"
+#include"path_plan.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -178,6 +179,7 @@ int core0_main (void)
     // 此处编写用户代码 例如外设初始化代码等
     mt9v03x_set_exposure_time(100);             // 初始化时设一次就够了，不要放进主循环
     image_init();
+    path_plan_init();               // 路径规划状态清零（发车时还会再调一次 path_plan_qing_ling）
     cpu_wait_event_ready();         // 等待所有核心初始化完毕
 
 #if TURN_TAI_JIAN_CE_SHI
@@ -197,10 +199,34 @@ int core0_main (void)
     while (TRUE)       //需要添加帧同步信号防止撕裂
     {
         motor_speed_update();                   // 10 ms 限频的编码器测速，接口见 motor.h
+#if PATH_PLAN_ENABLE
+        /* ---------------- 路径规划：里程到点 → 转弯 / 直穿 / 停车（2026-11-13 新增） ----------------
+         * 内部若执行转弯会调 turn()，阻塞 1~2 s（期间不巡线）；返回后本帧直接 continue，
+         * 等下一帧从「转弯冷却直行」重新开始，别拿转弯前的老图像算出 err 再打一次舵。 */
+        if (path_plan_geng_xin())
+        {
+            /* 转弯阻塞过（或已停车）：手里这帧图像是转弯期间拍的旧帧，
+             * 直接丢掉、pid 归零，等下一帧重新建误差，别拿旧线再打一次舵。 */
+            pid_reset();
+            continue;
+        }
+        if (path_plan_ting_che())
+        {
+            stop();                             // 到终点 / 某段超时兜底：双轮断电、舵机回中
+            continue;
+        }
+#endif
         uint32 now_ticks = system_getval();     // 本轮时间戳：帧间隔与断流判断共用一个时刻，避免重复取时钟
         uint32 ticks = now_ticks - start_ticks; //计算t
-        if (ticks > START_TIME)
+        if (ticks > START_TIME && !if_go)
+        {
             if_go = 1;   //已经出发
+#if PATH_PLAN_ENABLE
+            /* 发车瞬间才把里程基准归零：上电到发车之间车会被推、被摆位，
+             * 那一段不能算进 26.95 m 里，否则第 1 段就提前触发。 */
+            path_plan_qing_ling();
+#endif
+        }
         if (if_go)
             ticks = START_TIME + 1;
 
@@ -247,6 +273,19 @@ int core0_main (void)
 
             double_value(image_copy);           // 只处理副本，处理多久都不会撕裂
 
+#if PATH_PLAN_ENABLE
+            /* ---------------- 路径规划：直穿断线盲行（2026-11-13 新增） ----------------
+             * 三极管符号处线是断的，这一段的图像一定判丢线；若让丢线记忆接管，
+             * 车会顺着「记忆偏置」斜着扎出主道。所以盲行段一律 err=0 直行、不看图像，
+             * 靠编码器里程（PP_MANG_XING_MM）走出断线区，走完自动交回巡线。 */
+            if (path_plan_mang_xing())
+            {
+                control(ticks, 0, PP_MANG_XING_SU_DU);
+                pid_reset();
+                continue;
+            }
+#endif
+
             /* ---------------- 图传握手（二）：批次交接 ----------------
              * 2026-11-10 改：逐飞助手改传「原始灰度图像」，不再传二值化后的图。
              * 2026-11-12 修（审查报告 §5 / §8 第 3 条，双端一起改）：
@@ -271,7 +310,10 @@ int core0_main (void)
              * 确认后调用 turn(LU_KOU_TURN_JIAO_DU)：turn() 内部先直行 TURN_TI_QIAN_MM 再差速转弯，
              * 所以实际转弯点在识别点之后 TURN_TI_QIAN_MM 处、不是路口之前（2026-11-13 订正；阻塞执行，期间不巡线）。
              * 转弯收尾会置 turn_leng_que_zhen，冷却期内不检测，防止同一个路口二次触发。 */
-            if (LU_KOU_TURN_JIAO_DU != 0 && turn_leng_que_zhen == 0)
+            /* PATH_PLAN_ENABLE=1 时本支整体失效：路口动作改由 path_plan.c 的里程表决定，
+             * 两条路子同时开会重复触发（同一路口转两次）。要用回旧逻辑就把 tiaocan.h 里
+             * 的 PATH_PLAN_ENABLE 改成 0，这里自动恢复。 */
+            if (!PATH_PLAN_ENABLE && LU_KOU_TURN_JIAO_DU != 0 && turn_leng_que_zhen == 0)
             {
                 uint8 lu_kou_box[MAX_BOX][4][2];
                 if (find_boxes(image_copy, lu_kou_box) == 255)

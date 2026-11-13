@@ -331,6 +331,11 @@ int16 turn (int16 degrees)
                 zhi_lei_ji[zhi_i] += turn_qu_jue_dui(zhi_bu);
                 zhi_he += zhi_lei_ji[zhi_i];
             }
+            /* 2026-11-13：路径规划按 motor_li_cheng() 的累计里程触发，而那个累计值只在
+             * motor_speed_update() 里推进。本循环是阻塞的，不调它的话这一整段（含下面的
+             * 转弯弧长）都不会记进里程，path_plan 的段长就会少算一大截。
+             * motor_speed_update 自带 10 ms 限频，这里密集调用只是「到窗口才更新」，无副作用。 */
+            motor_speed_update();
             if ((float)zhi_he / 2.0f / mei_mm_zhi >= (float)TURN_TI_QIAN_MM)
                 break;                                              // 双轮平均里程到达提前量
             if ((uint64)(system_getval() - zhi_t0) > (uint64)TURN_TI_QIAN_CHAO_SHI_MS * 100000ULL)
@@ -370,6 +375,10 @@ int16 turn (int16 degrees)
             }
             turn_lei_ji_chong[i] += turn_qu_jue_dui(bu);
         }
+
+        /* 2026-11-13：同上，转弯阻塞期间也要让 motor_li_cheng() 跟上，
+         * 否则 path_plan 会把整段转弯弧长漏掉（90°、R≈409 mm 时约 640 mm）。 */
+        motor_speed_update();
 
         /* 里程：先按实测左右轮速比反推「当前实际半径」，再把两轮里程折成角度
          * （内轮走 φ(R-T/2)，外轮走 φ(R+T/2)，平均正好 = φR） */
