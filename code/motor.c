@@ -5,6 +5,7 @@
  * 说明              本文件是唯一允许直接写电机 PWM 的地方；
  *                    control() / stop() / turn() 一律经 drive() 输出，避免左右轮各写各的
  ********************************************************************************************************************/
+//注释45行
 #include "zf_common_headfile.h"
 #include "motor.h"
 
@@ -42,8 +43,8 @@ void motor_init (void)
      * 增量接口模式（6/7）是 GPT1 的 T2/T3/T4 专属。encoder_quad_init 第一行
      * zf_assert(encoder_n <= TIM4_ENCODER) 就会命中，而断言默认开启、命中后 while(TRUE) 死等，
      * 现象是上电卡在 motor_init() 里、轮子完全不动且无任何串口输出。 */
-    encoder_quad_init(TURN_ENCODER_ZUO, TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P00_9);
-    encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
+    //encoder_quad_init(TURN_ENCODER_ZUO, TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P00_9);
+    //encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
 
     pwm_init(TURN_PWM_ZUO, MOTOR_PWM_PINLV, 0);     // 左电机
     pwm_init(TURN_PWM_YOU, MOTOR_PWM_PINLV, 0);     // 右电机，必须与左同频
@@ -59,6 +60,7 @@ void motor_init (void)
     motor_su_du_mm_s[0] = 0;
     motor_su_du_mm_s[1] = 0;
     motor_shang_ci_tick = system_getval();
+    pwm_set_duty(TURN_PWM_YOU, 10000);
 }
 
 void drive (int16 zuo, int16 you)
