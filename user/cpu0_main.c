@@ -241,7 +241,19 @@ int core0_main (void)
         // 原 int64 写法在回绕点会得到负差值，导致断流保护最长失效 43 s
         if ((uint32)(now_ticks - (uint32)last_frame) > WU_ZHEN_CHAO_SHI)
         {
-            control(ticks, 0, MAX_SPEED / SLOW_DOWN_DIV);
+            /* 复核订正版 P0-1 断流自锁修复：
+             * last_frame 只在下面的帧分支里刷新，而帧分支排在断流分支之后。旧写法一旦进入
+             * 这里就 continue，永远到不了刷新点，断流条件自锁，车以降速直冲直到撞墙。
+             * 触发者往往不是摄像头坏，而是 turn() 阻塞 2~3 s 让时间戳落后。
+             * 修法：本轮若已有新帧，说明链路是通的，丢弃这一帧（阻塞期间攒下的旧帧）并
+             * 把时间戳接上，下轮即可回到巡线；只有真没帧才持续走降速分支。 */
+            if (mt9v03x_finish_flag)
+            {
+                mt9v03x_finish_flag = 0;
+                last_frame = now_ticks;
+            }
+            /* 复核订正版 P1-1：断流速度改用固定绝对宏，不再复用 MAX_SPEED/SLOW_DOWN_DIV(10%)。 */
+            control(ticks, 0, DUAN_LIU_SU_DU);
             pid_reset();
             /* 2026-11-13 审查订正（§8 漏报）：断流输出后跳过本轮帧分支。
              * 否则同轮 finish_flag=1（如 turn() 阻塞后的首帧）会再次 control() 覆盖回中降速输出。 */
@@ -303,7 +315,8 @@ int core0_main (void)
 
             if (!image_valid)                   // 二值化已判不可信（连续失败/硬阈值回退），白线大概率已丢，不再拿它算 err
             {
-                control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
+                int sp = diu_xian_jiang_su();    // 复核订正版 P2-4：先算带副作用的实参，消除求值顺序依赖
+                control(ticks, diu_xian_delta, sp);              // 丢线记忆 + 缓降
                 pid_reset();
                 continue;
             }
@@ -331,6 +344,10 @@ int core0_main (void)
                         diu_xian_zhen  = 0;                 // 清丢线状态，别让转弯后的旧记忆接管
                         diu_xian_delta = 0;
                         turn(LU_KOU_TURN_JIAO_DU);          // 阻塞：先提前量直行，再差速转弯
+                        /* 复核订正版 P0-1：turn() 阻塞 2~3 s，返回后必须刷新时间戳并丢弃
+                         * 阻塞期间攒下的旧帧，否则断流判定误触发；与上面断流分支的修复双保险。 */
+                        mt9v03x_finish_flag = 0;
+                        last_frame = system_getval();
                         continue;                           // 本帧到此为止，下一帧从冷却直行重新开始
                     }
                 }
@@ -374,7 +391,8 @@ int core0_main (void)
                     || lline < LINE_LEFT_MIN || rline > LINE_RIGHT_MAX
                     || (image_fan_se && (rline - lline) > FAN_SE_ZUI_DA_KUAN_DU))
             {
-                control(ticks, diu_xian_delta, diu_xian_jiang_su());   // 丢线记忆 + 缓降
+                int sp = diu_xian_jiang_su();    // 复核订正版 P2-4：先算带副作用的实参，消除求值顺序依赖
+                control(ticks, diu_xian_delta, sp);              // 丢线记忆 + 缓降
                 pid_reset();
                 continue;
             }

@@ -4,6 +4,9 @@
  * 编码              GBK（与工程其余源码一致，勿另存为 UTF-8）
  * 说明              本文件是唯一允许直接写电机 PWM 的地方；
  *                    control() / stop() / turn() 一律经 drive() 输出，避免左右轮各写各的
+ * 台架版声明         两路 encoder_quad_init 当前保持注释（台架调试用），里程恒 0，
+ *                    turn() 与路径规划不可用——本版本禁止上车，仅供架车标定。
+ *                    复核订正版 P0-2：原 init 末尾「右轮 100% 占空比」调试残留已删除。
  ********************************************************************************************************************/
 //注释45行
 #include "zf_common_headfile.h"
@@ -60,7 +63,6 @@ void motor_init (void)
     motor_su_du_mm_s[0] = 0;
     motor_su_du_mm_s[1] = 0;
     motor_shang_ci_tick = system_getval();
-    pwm_set_duty(TURN_PWM_YOU, 10000);
 }
 
 void drive (int16 zuo, int16 you)

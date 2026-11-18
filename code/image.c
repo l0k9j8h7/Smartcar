@@ -570,6 +570,11 @@ int32 find_line (uint8_t image[][MT9V03X_W], int height)
     // 单边线时补出的「另一边」其实是同一条白线的两端，(l+r) 会被当成赛道中点两倍而放大成满舵（N-1）
     if (rline - lline < MIN_TRACK_WIDTH)
     {
+        /* 复核订正版 P2-3：单边线补偿只对底行生效。last_lr_width 只在底行刷新，
+         * 拿底行宽度去补上溯行（透视下更窄）会系统性偏宽，err 被拉向中心，
+         * 表现为弯道出口「回正过头」。上溯行遇单边线直接返回 -1，让主循环继续往上找。 */
+        if (height != MT9V03X_H - 1)
+            return -1;
         if (last_lr_width <= 0)
             return -1;                  // 没有历史赛道信息就不猜，交给主循环走丢线保护
         int center = (lline + rline) >> 1;

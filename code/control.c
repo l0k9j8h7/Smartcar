@@ -9,6 +9,14 @@
 
 void stop (void)
 {
+    /* 复核订正版 P2-5：停车时把丢线记忆一并清零。
+     * 变量定义在 cpu0_main.c；终点停车后若未来加入「暂停后继续」，旧偏置会接管打舵。 */
+    extern volatile uint8 diu_xian_zhen;
+    extern volatile int16 diu_xian_delta;
+    extern volatile int32 diu_xian_su_du;
+    diu_xian_zhen  = 0;
+    diu_xian_delta = 0;
+    diu_xian_su_du = 0;
     drive_stop();                                   // 左右轮一起断，别只关左轮
     pwm_set_duty(ATOM0_CH1_P33_9, SERVO_CENTER);
     pid_reset();
@@ -53,6 +61,9 @@ int16 pid (uint32 dt_zhen)
     P = err;
     //I += err;
     d_raw = ((err - last_err) * DI_TONG_ZHI_HOU + (last_err - last_last_err) * (1 - DI_TONG_ZHI_HOU)) * dt_bi;
+    /* 复核订正版：D 项先按限幅钳位再强转，避免 d_raw 异常大时 (int16) 强转溢出回绕。 */
+    if (d_raw >  PID_D_LIMIT) d_raw =  PID_D_LIMIT;
+    if (d_raw < -PID_D_LIMIT) d_raw = -PID_D_LIMIT;
     D = (int16)d_raw;
     P = min(P, PID_P_LIMIT);
     P = max(P, -PID_P_LIMIT);
@@ -271,7 +282,11 @@ int16 turn (int16 degrees)
 
     /* ---- 目标半径：受前轮可用转角限制，R = L / tan(d) ---- */
     jiao_du_shou = (jiao_du > TURN_ZUI_DA_ZHUAN_JIAO_DU) ? TURN_ZUI_DA_ZHUAN_JIAO_DU : jiao_du;
-    ban_jing = (int32)((float)TURN_AXIS_MM * 57.29578f / (float)jiao_du_shou + 0.5f);   // 小角度近似 L/d
+    /* 复核订正版 P1-3：改用真几何 R = L / tan(theta)，替代小角度近似 L*57.29578/d。
+     * 原近似在 28° 算得 409 mm，真值约 376 mm，偏大 8.8% 导致每个 90° 弯多转约 8°。
+     * jiao_du_shou 为前轮转角（度），先转弧度；<=0 时兜底为 1 度防 tanf(0)=0 除零。 */
+    if (jiao_du_shou <= 0) jiao_du_shou = 1;
+    ban_jing = (int32)((float)TURN_AXIS_MM / tanf((float)jiao_du_shou * 3.14159265f / 180.0f) + 0.5f);
     // 这里不再钳位：半径由舵机角度决定，钳了会与实际弧长对不上，导致提早断电。
 
     /* ---- 每毫米脉冲：单位统一从这里出发，后面全部是「长度 × 脉冲/mm」 ---- */
@@ -355,6 +370,7 @@ int16 turn (int16 degrees)
     shang_ci[0] = encoder_get_count(TURN_ENCODER_ZUO);
     shang_ci[1] = encoder_get_count(TURN_ENCODER_YOU);
     qi_shi[0]   = 0;
+
     qi_shi[1]   = 0;
     t0  = system_getval();
     t_ce = t0;

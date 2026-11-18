@@ -18,7 +18,9 @@
  *   ★ 段长按地图《规划路线.jpg》的几何直线段填，实车转弯是圆弧，转弯期间车还会往前走一段，
  *     所以每段的实际触发里程会和表里的段长有偏差。第一次上车先让它空跑一遍，
  *     把 path_plan_shi_ji_mm[] 抄下来逐段修 duan_chang_mm —— 这张表就是一版一版标出来的。
- *   ★ 本模块未在 ADS 编译、未上板，第一次一定要架起来/低速试。
+ *   ★ 当前总开关 PATH_PLAN_ENABLE=0（tiaocan.h），路线表不参与运行，
+ *     主循环走摄像头识别路口后 turn() 的旧逻辑；要启用须先把该开关改 1。
+ *   ★ 段长/提前量/冲过补偿需空跑抄 path_plan_shi_ji_mm[] 后逐段标定，未实测前不要上车。
  ********************************************************************************************************************/
 #include "zf_common_headfile.h"
 #include "path_plan.h"
@@ -240,7 +242,10 @@ uint8 path_plan_geng_xin (void)
 
     /* 到点判据：本段里程 >= 段长 - 转弯冲出补偿。
      * PP_TURN_CHONG_GUO_MM 是「上一次转弯结束时车头已经越过路口中心多远」，
-     * 从当前段里扣掉它，避免每段都晚触发同样一段距离。标定前保持 0。 */
+     * 从当前段里扣掉它，避免每段都晚触发同样一段距离。标定前保持 0。
+     * 复核订正版注意：出弯偏移本质是 R*tan(theta/2)，不应靠全局扣减解决——
+     * 对 36 段一刀切会把最短段（190 mm）扣成负数兜底到 50 mm。正确做法是空跑抄
+     * path_plan_shi_ji_mm[] 后逐段修 duan_chang_mm；本宏保持 0 更安全。 */
     mu_biao_mm = ben_duan->duan_chang_mm;
     if (mu_biao_mm > (uint16)PP_TURN_CHONG_GUO_MM)
         mu_biao_mm = (uint16)(mu_biao_mm - (uint16)PP_TURN_CHONG_GUO_MM);
