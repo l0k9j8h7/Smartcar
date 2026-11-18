@@ -37,7 +37,7 @@
 #define SERVO_MIN 400               // 舵机输出下限
 #define SERVO_MAX 1100              // 舵机输出上限
 #define DELTA_LIMIT 150             // 主循环 delta 钳位范围，正负 DELTA_LIMIT
-#define SLOPE_WEIGHT 55             // 斜率前馈权重，delta = pid() + x1 * SLOPE_WEIGHT
+#define SLOPE_WEIGHT 0             // 斜率前馈权重，delta = pid() + x1 * SLOPE_WEIGHT
 /* 斜率越界保护（复核报告 P1-6）：x1 的量纲是「像素/行」，典型 0.1~2.0，极值约 3.7
  * （ZUI_DA_GAO_DU=50 行内横跨 187 像素）。原值 100 用在斜率上永远不会触发，
  * 所谓「斜率越界判丢线」是死保护 -- 这是修复版漏掉的一条。
@@ -49,9 +49,9 @@
 #define IMAGE_CENTER 187            // 图像中心列，err = (左边界 + 右边界) - IMAGE_CENTER
 
 /* ========== 三、PID ========== */
-#define PID_KP 1.0f                 // 比例系数，调大响应变快但易过冲
-#define PID_KI 0.2f                 // 积分系数，让轨迹更贴近目标
-#define PID_KD 0.6f                 // 微分系数，抑制振荡，只在突变时起主要作用
+#define PID_KP 0.6f                 // 比例系数，调大响应变快但易过冲
+#define PID_KI 0                 // 积分系数，让轨迹更贴近目标
+#define PID_KD 0                 // 微分系数，抑制振荡，只在突变时起主要作用
 /* 积分分离门限（审查 §6.1 / 订正版 §3 第 9 条）：err 有效量程是 -166~168
  * （lline>=10、rline<=178 夹出来的），原来门限写 100，弯道常见帧 |err|>=100 时 I 项
  * **完全不累积** -- 不是「贡献小」，是「不存在」，§4.2 整节论证的 I 项失效根因就在这里。
@@ -230,7 +230,7 @@
 /* --- 6.5b 路口触发转弯接入主循环（2026-11-12 新增，2026-11-13 注释方向订正） ---
  * cpu0_main.c 每帧用 find_boxes() 做路口检测，连续 LU_KOU_QUE_REN_ZHEN 帧确认后调用
  * turn(LU_KOU_TURN_JIAO_DU)；turn() 先直行 TURN_TI_QIAN_MM 再转，转弯点在识别点之后。 */
-#define LU_KOU_TURN_JIAO_DU     90      // 识别到路口后执行的转角（度）：正=右转，负=左转。
+#define LU_KOU_TURN_JIAO_DU     0      // 识别到路口后执行的转角（度）：正=右转，负=左转。
                                         // 0 = 关闭（主循环连路口检测都不跑，回到纯巡线）。
                                         // 常用：90 直角、120/135 大弯、180 掉头；符号按赛道实际走向改
 #define LU_KOU_QUE_REN_ZHEN     2       // 连续多少帧识别到路口才算确认（防单帧噪声误触发）；1 = 单帧即触发
