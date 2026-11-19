@@ -4,8 +4,11 @@
  * 编码              GBK（与工程其余源码一致，勿另存为 UTF-8）
  * 说明              本文件是唯一允许直接写电机 PWM 的地方；
  *                    control() / stop() / turn() 一律经 drive() 输出，避免左右轮各写各的
- * 台架版声明         两路 encoder_quad_init 当前保持注释（台架调试用），里程恒 0，
- *                    turn() 与路径规划不可用——本版本禁止上车，仅供架车标定。
+ * 编码器声明         两路 encoder_quad_init 已启用（2026-11-19 恢复），里程与差速转弯可用，
+ *                    路径规划可跑。上电前先确认编码器接线：左 TIM4(P02_8/P00_9)、
+ *                    右 TIM2(P33_7/P33_6)，信号线别碰 5V/地，否则主控可能发热甚至损坏。
+ *                    每轮圈脉冲 TURN_MEI_LUN_QUAN_CHONG_MEI_DU 当前是理论值，
+ *                    推车 10 圈数脉冲除以 10 回填后才准；未标定时转弯角度与段长会偏。
  *                    复核订正版 P0-2：原 init 末尾「右轮 100% 占空比」调试残留已删除。
  ********************************************************************************************************************/
 //注释45行
@@ -46,8 +49,8 @@ void motor_init (void)
      * 增量接口模式（6/7）是 GPT1 的 T2/T3/T4 专属。encoder_quad_init 第一行
      * zf_assert(encoder_n <= TIM4_ENCODER) 就会命中，而断言默认开启、命中后 while(TRUE) 死等，
      * 现象是上电卡在 motor_init() 里、轮子完全不动且无任何串口输出。 */
-    //encoder_quad_init(TURN_ENCODER_ZUO, TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P00_9);
-    //encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
+    encoder_quad_init(TURN_ENCODER_ZUO, TIM4_ENCODER_CH1_P02_8, TIM4_ENCODER_CH2_P00_9);
+    encoder_quad_init(TURN_ENCODER_YOU, TIM2_ENCODER_CH1_P33_7, TIM2_ENCODER_CH2_P33_6);
 
     pwm_init(TURN_PWM_ZUO, MOTOR_PWM_PINLV, 0);     // 左电机
     pwm_init(TURN_PWM_YOU, MOTOR_PWM_PINLV, 0);     // 右电机，必须与左同频
