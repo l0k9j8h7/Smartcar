@@ -18,9 +18,10 @@
  *   ★ 段长按地图《规划路线.jpg》的几何直线段填，实车转弯是圆弧，转弯期间车还会往前走一段，
  *     所以每段的实际触发里程会和表里的段长有偏差。第一次上车先让它空跑一遍，
  *     把 path_plan_shi_ji_mm[] 抄下来逐段修 duan_chang_mm —— 这张表就是一版一版标出来的。
- *   ★ 当前总开关 PATH_PLAN_ENABLE=0（tiaocan.h），路线表不参与运行，
- *     主循环走摄像头识别路口后 turn() 的旧逻辑；要启用须先把该开关改 1。
- *   ★ 段长/提前量/冲过补偿需空跑抄 path_plan_shi_ji_mm[] 后逐段标定，未实测前不要上车。
+ *   ★ 本分支 no-encoder-timing：编码器不参与运行。段长按「经过时间 × PP_NOENC_MM_PER_MS」
+ *     折算，转角按「角度 × PP_NOENC_MS_PER_DEG」定时，两个系数必须架车实测。
+ *   ★ ★ 定时方案不看车实际走了多远：打滑/堵转/电池掉压都会让实际距离与等效里程脱节。
+ *     第一次必须架车或低速空跑，随时准备断电；不要一上来就全速跑全程。
  ********************************************************************************************************************/
 #include "zf_common_headfile.h"
 #include "path_plan.h"
@@ -121,6 +122,14 @@ static int32 pp_duan_chong (void)
  * 主循环据此不再动作 —— 宁可不动，也不能按假里程乱转弯。 */
 static uint16 pp_duan_mm (void)
 {
+#if PP_NO_ENCODER_MODE
+    /* 无编码器：从本段起点计的时间 × 速度系数 = 等效里程 mm。
+     * 复用 pp_duan_qi_tick（pp_duan_chong_qi 里已置），到点判据/盲行/越行全部不用改。
+     * system_getval 单位 10 ns，除以 100000 得 ms。 */
+    uint32 ms = (uint32)(system_getval() - pp_duan_qi_tick) / 100000UL;
+    float  mm = (float)ms * PP_NOENC_MM_PER_MS;
+    path_plan_shi_hua = (PP_NOENC_MM_PER_MS > 0) ? 1 : 0;
+#else
     int32 chong = pp_duan_chong();
     int32 mm;
 
@@ -132,10 +141,55 @@ static uint16 pp_duan_mm (void)
     path_plan_shi_hua = 1;
 
     mm = (int32)((float)chong * (float)TURN_LUN_ZHOU_MM / (float)TURN_MEI_LUN_QUAN_CHONG_MEI_DU);
+#endif
     if (mm < 0)     mm = 0;
-    if (mm > 30000) mm = 30000;             // 单段最长 2.14 m，3 m 已是异常，钳住防 uint16 溢出
+    if (mm > 30000) mm = 30000;
     return (uint16)mm;
 }
+
+/* ===================================================================================================================
+ * 无编码器定时转弯 turn_noenc()：打舵到固定角 + 两轮固定差速 + 定时，不数脉冲、不闭环。
+ * 只在 PP_NO_ENCODER_MODE=1 时编译进来；PP_TURN(d) 统一转发到 turn()/turn_noenc()。
+ * 转角 = |d| × PP_NOENC_MS_PER_DEG，标定方法：架车让轮子空转，调系数到转 90° 恰好 90 度。
+ * =================================================================================================================== */
+#if PP_NO_ENCODER_MODE
+static int16 turn_noenc (int16 degrees)
+{
+    int16  jiao = (degrees > 0) ? degrees : (int16)(-degrees);
+    int16  fx   = (degrees > 0) ? TURN_FANG_XIANG : (int16)(-TURN_FANG_XIANG);
+    uint32 ms   = (uint32)((float)jiao * PP_NOENC_MS_PER_DEG);
+    int32  cc_l, cc_r;
+
+    if (jiao < TURN_ZUI_XIAO_JIAO_DU) return 0;
+
+    /* 不停车打舵：先维持进弯占空比，再打舵等前轮到位 */
+    drive(PP_NOENC_JIN_WAN_SU_DU, PP_NOENC_JIN_WAN_SU_DU);
+    pwm_set_duty(ATOM0_CH1_P33_9,
+                 (uint32)((int32)SERVO_CENTER + (int32)fx * (int32)TURN_STEER_DUTY));
+    system_delay_ms(TURN_DA_DUO_MS);
+
+    /* 右转圆心在右：左轮外、右轮内；左转反之 */
+    if (fx > 0) { cc_l = PP_NOENC_TURN_WAI_SU_DU; cc_r = PP_NOENC_TURN_NEI_SU_DU; }
+    else        { cc_r = PP_NOENC_TURN_WAI_SU_DU; cc_l = PP_NOENC_TURN_NEI_SU_DU; }
+    drive((int16)cc_l, (int16)cc_r);
+    system_delay_ms(ms);
+
+    /* 收尾：断电、舵机回中、等滑停、PID 归零、冷却帧防旧 err 反打舵 */
+    drive(0, 0);
+    pwm_set_duty(ATOM0_CH1_P33_9, SERVO_CENTER);
+    system_delay_ms(TURN_TING_CHE_MS);
+    pid_reset();
+    turn_leng_que_zhen = TURN_LENG_QUE_ZHEN;
+
+    /* 无编码器无法实测，观测量直接回填目标值，方便调试器看流程 */
+    turn_shi_ji_jiao_du = degrees;
+    turn_jie_guo        = TURN_WAN_CHENG;
+    return jiao;
+}
+#define PP_TURN(d)  turn_noenc(d)
+#else
+#define PP_TURN(d)  turn(d)
+#endif
 
 /* 段起点对齐到当前脉冲，并把本段里程清零 */
 static void pp_duan_chong_qi (void)
@@ -189,19 +243,19 @@ static uint8 pp_zhi_xing_dong_zuo (uint8 dong_zuo)
         case PP_DONG_ZUO_YOU_90:
             diu_xian_zhen  = 0;             // 清丢线记忆，别让转弯前的偏置接管转弯后的第一帧
             diu_xian_delta = 0;
-            turn(PP_90_JIAO_DU);            // 正 = 右转，符号由 TURN_FANG_XIANG 统一
+            PP_TURN(PP_90_JIAO_DU);         // 正 = 右转，符号由 TURN_FANG_XIANG 统一
             return 1;
 
         case PP_DONG_ZUO_ZUO_90:
             diu_xian_zhen  = 0;
             diu_xian_delta = 0;
-            turn(-PP_90_JIAO_DU);
+            PP_TURN(-PP_90_JIAO_DU);
             return 1;
 
         case PP_DONG_ZUO_XIE_45:
             diu_xian_zhen  = 0;
             diu_xian_delta = 0;
-            turn(PP_XIE_45_JIAO_DU);        // 正 = 右斜 45°，左斜就把它改成 -45
+            PP_TURN(PP_XIE_45_JIAO_DU);     // 正 = 右斜 45°，左斜就把它改成 -45
             return 1;
 
         case PP_DONG_ZUO_ZHI_CHUAN:
